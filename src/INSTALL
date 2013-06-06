@@ -1,5 +1,5 @@
 
-ukb needs boost version 1.44 or higher to compile. Specifically, You need the
+ukb needs boost version 1.48 or higher to compile. Specifically, You need the
 following Boost libraries:
 
       * boost graph library
@@ -9,12 +9,13 @@ following Boost libraries:
       * boost lexical cast
       * boost numeric conversions
       * boost timer
+	  * boost asio
 
 if you need to compile the boost libraries yourself, you should to call the
-'bootstrap.sh' script and then use bjam with the --layout=system option, i.e.:
+'bootstrap.sh' script and then use b2 with the --layout=system option. 
 
 % ./bootstrap.sh
-% ./bjam install --layout=system
+% ./b2 install --layout=system
 
 If you have boost properly installed, just run by the standard compilation
 procedure:
@@ -50,3 +51,25 @@ procedure:
 
 % make install
 
+* Installing a custom version of boost, and compiling against it
+
+Say I want to install boot version 1.49 in /opt/boost1.49 and compile ukb
+against it. Do the following:
+
+(download boost and uncompress in $boost_dir)
+% cd $boost_dir
+% ./bootstrap.sh --prefix=/opt/boost1.49
+% ./b2 install --layout=system
+% sudo ./b2 install --layout=system
+
+then go to ukb's "src" directory and do the following:
+
+% ./configure --with-boost-lib=/opt/boost1.49/lib --with-boost-include=/opt/boost1.49/include
+% make
+
+for running ukb, you have to include the boost lib directory inside
+"LD_LIBRARY_PATH" (in MacOS, the variable name is "DYLD_LIBRARY_PATH") , e.g.:
+
+% export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}/opt/boost1.49/lib
+
+and then run ukb as usual.

@@ -355,6 +355,24 @@ namespace ukb {
   ////////////////////////////////////////////////////////////////
   // CSentence
 
+
+  CSentence::CSentence(const std::string & id, const std::string & ctx_str) :
+	cs_id(id) {
+	vector<string> ctx;
+	this->split(ctx_str, ctx);
+	if (ctx.size() == 0) return;
+	parse_ctx(ctx);
+  }
+
+
+  void CSentence::split(const string & str, vector<string> & out) {
+
+	char_separator<char> sep(" \t");
+	tokenizer<char_separator<char> > tok_id(str, sep);
+	vector<string>().swap(out); // empty input
+	copy(tok_id.begin(), tok_id.end(), back_inserter(out));
+  }
+
   struct ctw_parse_t {
 	string lemma;
 	string pos;
@@ -417,78 +435,78 @@ namespace ukb {
 	}
   }
 
+  // Parse a list of context words to create a CSentence
+
+  void CSentence::parse_ctx(const vector<string> & ctx) {
+
+	map<int, map<string, float> > Ties;
+	int last_nopv_idx = -1;
+	for(vector<string>::const_iterator it = ctx.begin(); it != ctx.end(); ++it) {
+	  try {
+		ctw_parse_t ctwp = parse_ctw(*it);
+		if (ctwp.lemma.size() == 0) return;
+		string pos("");
+		CWord::cwtype cw_type = cast_int_cwtype(ctwp.dist);
+		if (cw_type == CWord::cw_error) {
+		  throw std::logic_error(*it + " fourth field is invalid.");
+		}
+		if (cw_type != CWord::cw_concept && glVars::input::filter_pos) {
+		  if (!ctwp.pos.size()) throw std::logic_error(*it + " has no POS.");
+		  pos = ctwp.pos;
+		}
+		if(!glVars::input::weight)
+		  ctwp.w = 1.0;
+
+		CWord new_cw(ctwp.lemma, ctwp.id, pos, cw_type, ctwp.w);
+
+		// tie to nopv cword. Do it after CWord creation, so we are sure cw_concept is in KB
+		if (cw_type == CWord::cw_concept && last_nopv_idx != -1 && v[last_nopv_idx].has_concept(ctwp.lemma)) {
+		  tie_nopv_concept(Ties, last_nopv_idx, ctwp.lemma, ctwp.w);
+		  return;
+		}
+
+		if (new_cw.size()) {
+		  if (cw_type == CWord::cw_tgtword_nopv)
+			last_nopv_idx = v.size();
+		  else last_nopv_idx = -1; // any new CW resets last_nopv
+		  v.push_back(new_cw);
+		} else {
+		  // No synset for that word.
+		  if (glVars::debug::warning)
+			cerr << "W:" << *it << " can't be mapped to KB.";
+		}
+	  } catch (ukb::wdict_error & e) {
+		throw e;
+	  } catch (std::logic_error & e) {
+		string msg(e.what());
+		if (!glVars::input::swallow) throw std::runtime_error(msg);
+		if (glVars::debug::warning) {
+		  cerr << msg << "\n";
+		}
+	  }
+	}
+	// link concepts to nopv cwords
+	link_nopv_concepts(Ties, v);
+  }
+
   // AW file read (create a csentence from a context)
 
   istream & CSentence::read_aw(istream & is, size_t & l_n) {
 
 	string line;
-	map<int, map<string, float> > Ties;
-	int last_nopv_idx = -1;
+	vector<string> ctx;
 
 	if(read_line_noblank(is, line, l_n)) {
-
 	  // first line is id
-	  char_separator<char> sep(" \t");
-	  vector<string> ctx;
-
-	  tokenizer<char_separator<char> > tok_id(line, sep);
-	  copy(tok_id.begin(), tok_id.end(), back_inserter(ctx));
+	  this->split(line, ctx);
 	  if (ctx.size() == 0) return is; // blank line or EOF
 	  cs_id = ctx[0];
-	  vector<string>().swap(ctx);
 	  // next comes the context
 	  if(!read_line_noblank(is, line, l_n)) return is;
-	  tokenizer<char_separator<char> > tok_ctx(line, sep);
-	  copy(tok_ctx.begin(), tok_ctx.end(), back_inserter(ctx));
+	  this->split(line, ctx);
 	  if (ctx.size() == 0) return is; // blank line or EOF
-	  int i = 0;
 	  try {
-		for(vector<string>::const_iterator it = ctx.begin(); it != ctx.end(); ++i, ++it) {
-		  try {
-			ctw_parse_t ctwp = parse_ctw(*it);
-			if (ctwp.lemma.size() == 0) continue;
-			string pos("");
-			CWord::cwtype cw_type = cast_int_cwtype(ctwp.dist);
-			if (cw_type == CWord::cw_error) {
-			  throw std::logic_error(*it + " fourth field is invalid.");
-			}
-			if (cw_type != CWord::cw_concept && glVars::input::filter_pos) {
-			  if (!ctwp.pos.size()) throw std::logic_error(*it + " has no POS.");
-			  pos = ctwp.pos;
-			}
-			if(!glVars::input::weight)
-			  ctwp.w = 1.0;
-
-			CWord new_cw(ctwp.lemma, ctwp.id, pos, cw_type, ctwp.w);
-
-			// tie to nopv cword. Do it after CWord creation, so we are sure cw_concept is in KB
-			if (cw_type == CWord::cw_concept && last_nopv_idx != -1 && v[last_nopv_idx].has_concept(ctwp.lemma)) {
-			  tie_nopv_concept(Ties, last_nopv_idx, ctwp.lemma, ctwp.w);
-			  continue;
-			}
-
-			if (new_cw.size()) {
-			  if (cw_type == CWord::cw_tgtword_nopv)
-				last_nopv_idx = v.size();
-			  else last_nopv_idx = -1; // any new CW resets last_nopv
-			  v.push_back(new_cw);
-			} else {
-			  // No synset for that word.
-			  if (glVars::debug::warning)
-				cerr << "W:" << *it << " can't be mapped to KB.";
-			}
-		  } catch (ukb::wdict_error & e) {
-			throw e;
-		  } catch (std::logic_error & e) {
-			string msg(e.what());
-			if (!glVars::input::swallow) throw std::runtime_error(msg);
-			if (glVars::debug::warning) {
-			  cerr << msg << "\n";
-			}
-		  }
-		}
-		// link concepts to nopv cwords
-		link_nopv_concepts(Ties, v);
+		this->parse_ctx(ctx);
 	  } catch (ukb::wdict_error & e) {
 		throw e;
 	  } catch (std::exception & e) {

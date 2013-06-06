@@ -151,7 +151,7 @@ namespace ukb {
 	typedef std::vector<CWord>::size_type size_type;
 
 	CSentence() {};
-	CSentence(const std::vector<std::string> & sent_);
+	CSentence(const std::string & id, const std::string & ctx);
 
 	CSentence(const CSentence & cs_) : v(cs_.v) , cs_id(cs_.cs_id) {};
 	CSentence & operator=(const CSentence & cs_);
@@ -190,6 +190,10 @@ namespace ukb {
 	std::ostream & print_csent_simple(std::ostream & o) const;
 	std::ostream & debug(std::ostream & o) const;
   private:
+
+	static void split(const std::string & str, std::vector<std::string> & out);
+	void parse_ctx(const std::vector<std::string> & ctx);
+
 	void read_from_stream (std::ifstream & is);
 	std::ofstream & write_to_stream(std::ofstream & o) const;
 	std::vector<CWord> v;
