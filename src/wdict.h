@@ -80,8 +80,8 @@ namespace ukb {
 	// Singleton
 	static WDict & instance();
 
+	size_t size();
 	WDict_entries get_entries(const std::string & word, const std::string & pos = std::string()) const;
-
 	const std::vector<std::string> & headwords() const { return m_words; }
 
 	std::string variant(std::string &concept_id) const;

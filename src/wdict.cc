@@ -275,8 +275,7 @@ namespace ukb {
 
 	std::ifstream fh(fname.c_str(), ofstream::in);
 	if(!fh) {
-	  cerr << "Error: can't open " << fname << endl;
-	  exit(-1);
+	  throw std::runtime_error("Error: can not open dict file" + fname + "\n");
 	}
 
 	// Parse lines of form:
@@ -373,6 +372,11 @@ namespace ukb {
 	static WDict inst;
 	return inst;
   }
+
+  size_t WDict::size() {
+	return m_wdicts.size();
+  }
+
 
   static void add_variant_pos(const string & hw,
 							  const std::vector<Kb_vertex_t> & wsyns,
