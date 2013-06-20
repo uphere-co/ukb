@@ -7,6 +7,8 @@
 #include <iostream>
 #include <fstream>
 
+#include "ukbServer.h"
+
 // Basename & friends
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
@@ -41,8 +43,8 @@ enum dis_method {
 dgraph_rank_methods dgraph_rank_method = dstatic;
 bool use_dfs_dgraph = false;
 int opt_out_semcor = false;
-
 dis_method opt_dmethod = ppr;
+string cmdline;
 
 // Program options stuff
 
@@ -132,8 +134,6 @@ void disamb_dgraph_from_corpus_w2w(CSentence & cs) {
 	  disamb_cword_dgraph(cw_it, dgraph, ranks);
 	}
   }
-  if (opt_out_semcor) cs.print_csent_semcor_aw(std::cout);
-  else cs.print_csent_simple(std::cout);
 }
 
 void disamb_dgraph_from_corpus(CSentence & cs) {
@@ -161,8 +161,6 @@ void disamb_dgraph_from_corpus(CSentence & cs) {
 	}
 	disamb_csentence_dgraph(cs, dgraph, ranks);
   }
-  if (opt_out_semcor) cs.print_csent_semcor_aw(cout);
-  else cs.print_csent_simple(cout);
 }
 
 void ppr_csent(CSentence & cs) {
@@ -189,8 +187,6 @@ void dis_csent_ppr(CSentence & cs) {
   } else {
 	ppr_csent(cs);
   }
-  if (opt_out_semcor) cs.print_csent_semcor_aw(cout);
-  else cs.print_csent_simple(cout);
 }
 
 
@@ -205,8 +201,6 @@ void dis_csent_ppr_by_word(CSentence & cs) {
   } else {
 	calculate_kb_ppr_by_word_and_disamb(cs);
   }
-  if (opt_out_semcor) cs.print_csent_semcor_aw(cout);
-  else cs.print_csent_simple(cout);
 }
 
 void dis_csent_classic_prank(CSentence &cs) {
@@ -216,43 +210,121 @@ void dis_csent_classic_prank(CSentence &cs) {
 	ranks = Kb::instance().static_prank();
   }
   disamb_csentence_kb(cs, ranks);
-  if (opt_out_semcor) cs.print_csent_semcor_aw(cout);
-  else cs.print_csent_simple(cout);
 }
 
-int dispatch_run(const string & fullname_in) {
+
+void dispatch_run_cs(CSentence & cs) {
+
+  switch(opt_dmethod) {
+  case dgraph_bfs:
+	use_dfs_dgraph = false; // use bfs
+	disamb_dgraph_from_corpus(cs);
+	break;
+  case dgraph_dfs:
+	use_dfs_dgraph = true;
+	disamb_dgraph_from_corpus(cs);
+	break;
+  case ppr:
+	dis_csent_ppr(cs);
+	break;
+  case ppr_w2w:
+	dis_csent_ppr_by_word(cs);
+	break;
+  case ppr_static:
+	dis_csent_classic_prank(cs);
+	break;
+  };
+}
+
+void dispatch_run(istream & is, ostream & os) {
 
   size_t l_n = 0;
 
-  try {
-	CSentence cs;
-	while (cs.read_aw(std::cin, l_n)) {
-	  switch(opt_dmethod) {
-	  case dgraph_bfs:
-		use_dfs_dgraph = false; // use bfs
-		disamb_dgraph_from_corpus(cs);
-		break;
-	  case dgraph_dfs:
-		use_dfs_dgraph = true;
-		disamb_dgraph_from_corpus(cs);
-		break;
-	  case ppr:
-		dis_csent_ppr(cs);
-		break;
-	  case ppr_w2w:
-		dis_csent_ppr_by_word(cs);
-		break;
-	  case ppr_static:
-		dis_csent_classic_prank(cs);
-		break;
-	  };
-	  cs = CSentence();
-	}
-  } catch (std::exception & e) {
-    cerr << "Error reading " << fullname_in << "\n" << e.what() << "\n";
-    return 0;
+  CSentence cs;
+  while (cs.read_aw(is, l_n)) {
+	dispatch_run_cs(cs);
+	if (opt_out_semcor) cs.print_csent_semcor_aw(os);
+	else cs.print_csent_simple(os);
+	cs = CSentence();
   }
-  return 1;
+}
+
+///////////////////////////////////////////////
+// Server/clien functions
+
+// Return FALSE means kill server
+
+bool handle_server_read(sSession & session) {
+  string ctx_id;
+  string ctx;
+  try {
+	session.receive(ctx);
+	if (ctx == "stop") return false;
+	session.send(cmdline);
+	while(1) {
+	  if (!session.receive(ctx_id)) break;
+	  if (!session.receive(ctx)) break;
+	  CSentence cs(ctx_id, ctx);
+	  dispatch_run_cs(cs);
+	  ostringstream oss;
+	  if (opt_out_semcor) cs.print_csent_semcor_aw(oss);
+	  else cs.print_csent_simple(oss);
+	  session.send(oss.str());
+	}
+  } catch (std::exception& e)	{
+	// send error and close the session.
+	// Note: the server is still alive for new connections.
+	session.send(e.what());
+  }
+  return true;
+}
+
+bool client(istream & is, ostream & os, unsigned int port) {
+  // connect to ukb port and send data to it.
+  sClient client("localhost", port);
+  string server_cmd;
+  string go("go");
+  if (client.error()) {
+	std::cerr << "Error when connecting: " << client.error_str() << std::endl;
+	return false;
+  }
+  string id, ctx, out;
+  size_t l_n = 0;
+  try {
+	client.send(go);
+	client.receive(server_cmd);
+	os << server_cmd << std::endl;
+	while(read_line_noblank(is, id, l_n)) {
+	  if(!read_line_noblank(is, ctx, l_n)) return false;
+	  client.send(id);
+	  client.send(ctx);
+	  client.receive(out);
+	  os << out;
+	  os.flush();
+	}
+  } catch (std::exception& e)	{
+	std::cerr << e.what() << std::endl;
+	return false;
+  }
+  return true;
+}
+
+
+bool client_stop_server(unsigned int port) {
+  // connect to ukb port and tell it to stop
+  sClient client("localhost", port);
+  string stop("stop");
+  if (client.error()) {
+	std::cerr << "Error when connecting: " << client.error_str() << std::endl;
+	return false;
+  }
+  try {
+	client.send(stop);
+  } catch (std::exception& e)	{
+	std::cerr << e.what() << std::endl;
+	return false;
+  }
+  return true;
 }
 
 int main(int argc, char *argv[]) {
@@ -267,8 +339,11 @@ int main(int argc, char *argv[]) {
   map_dgraph_ranks["static"] = dstatic;
 
   bool opt_do_test = false;
+  bool opt_daemon = false;
+  bool opt_client = false;
+  bool opt_shutdown = false;
 
-  string cmdline("!! -v ");
+  cmdline = string("!! -v ");
   cmdline += glVars::ukb_version;
   for (int i=0; i < argc; ++i) {
     cmdline += " ";
@@ -281,6 +356,7 @@ int main(int argc, char *argv[]) {
 
   string alternative_dict_fname;
 
+  unsigned int port = 10000;
   size_t iterations = 0;
   float thresh = 0.0;
   bool check_convergence = false;
@@ -302,7 +378,6 @@ int main(int argc, char *argv[]) {
     ("version", "Show version.")
     ("kb_binfile,K", value<string>(), "Binary file of KB (see compile_kb).")
     ("dict_file,D", value<string>(), "Dictionary text file.")
-    ("port,p", value<int>(), "Specify port to listen.")
     ;
 
   options_description po_desc_wsd("WSD methods");
@@ -351,8 +426,16 @@ int main(int argc, char *argv[]) {
     ("rank_nonorm", "Do not normalize the ranks of target words.")
 	;
 
+  options_description po_desc_server("Client/Server options");
+  po_desc_server.add_options()
+    ("daemon", "Start a daemon listening to port. Assumes --port")
+    ("port", value<unsigned int>(), "Port to listen/send information.")
+    ("client", "Use client mode to send contexts to the ukb daemon. Bare in mind that the configuration is that of the server.")
+    ("shutdown", "Shutdown ukb daemon.")
+	;
+
   options_description po_visible(desc_header);
-  po_visible.add(po_desc).add(po_desc_wsd).add(po_desc_prank).add(po_desc_input).add(po_desc_dict).add(po_desc_output);
+  po_visible.add(po_desc).add(po_desc_wsd).add(po_desc_prank).add(po_desc_input).add(po_desc_dict).add(po_desc_output).add(po_desc_server);
 
   options_description po_hidden("Hidden");
   po_hidden.add_options()
@@ -564,13 +647,39 @@ int main(int argc, char *argv[]) {
       alternative_dict_fname = vm["altdict"].as<string>();
     }
 
-  }
-  catch(std::exception& e) {
+	if (vm.count("daemon")) {
+	  opt_daemon = true;
+	}
+
+	if (vm.count("port")) {
+	  port = vm["port"].as<unsigned int>();;
+	}
+
+	if (vm.count("client")) {
+	  opt_client = true;
+	}
+
+	if (vm.count("shutdown")) {
+	  opt_shutdown = true;
+	}
+
+  } catch(std::exception& e) {
     cerr << e.what() << "\n";
 	exit(-1);
   }
 
-  if (!fullname_in.size()) {
+  if(opt_shutdown) {
+	if (client_stop_server(port)) {
+	  cerr << "Stopped UKB daemon on port " << lexical_cast<string>(port) << "\n";
+	  return 0;
+	} else {
+	  cerr << "Can not stop UKB daemon on port " << lexical_cast<string>(port) << "\n";
+	  return 1;
+	}
+  }
+
+  // if not daemon, check input files (do it early before loading KB and dictionary)
+  if (!fullname_in.size() and !opt_daemon) {
     cout << po_visible << endl;
     cout << "Error: No input" << endl;
     exit(-1);
@@ -578,6 +687,38 @@ int main(int argc, char *argv[]) {
 
   if (check_convergence) set_pr_convergence(iterations, thresh);
 
+  // if not --client, load KB and dictionary
+  if (!kb_binfile.size() and !opt_client) {
+	cerr << "Error: no KB file\n";
+	exit(1);
+  } else {
+	size_t dict_size = 0;
+	try {
+	  Kb::create_from_binfile(kb_binfile);
+	  dict_size = WDict::instance().size();
+	  if (alternative_dict_fname.size()) {
+		WDict::instance().read_alternate_file(alternative_dict_fname);
+	  }
+	} catch (std::exception & e) {
+	  cerr << e.what() << "\n";
+	  return dict_size == 0;
+	}
+  }
+
+  // if --daemon, launch server and exit
+  if (opt_daemon) {
+	// accept malformed contexts, as we don't want the daemon to die.
+	glVars::input::swallow = true;
+	cout << "Starting UKB daemon on port " << lexical_cast<string>(port) << " ... ";
+	if (!start_daemon(port, &handle_server_read)) {
+	  cout << "Error!\n";
+	  return 1;
+	}
+	cout << "done" << "\n";
+	return 0;
+  }
+
+  // create stream from input file
   if (fullname_in == "-" ) {
 	// read from <STDIN>
     cmdline += " <STDIN>";
@@ -592,10 +733,11 @@ int main(int argc, char *argv[]) {
 	std::cin.rdbuf(input_ifs.rdbuf());
   }
 
-  Kb::create_from_binfile(kb_binfile);
-
-  if (alternative_dict_fname.size()) {
-	WDict::instance().read_alternate_file(alternative_dict_fname);
+  if (opt_client) {
+	// TODO :
+	// - check parameters
+	// - cmdline
+	return !client(std::cin, std::cout, port);
   }
 
   if (opt_do_test) {
@@ -605,8 +747,12 @@ int main(int argc, char *argv[]) {
 
   cout << cmdline << "\n";
 
-  if (!dispatch_run(fullname_in))
-	exit(-1);
+  try {
+	dispatch_run(std::cin, std::cout);
+  } catch (std::exception & e) {
+    cerr << "Error reading " << fullname_in << "\n" << e.what() << "\n";
+    return 0;
+  }
 
   return 0;
 }
