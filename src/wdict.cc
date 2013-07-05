@@ -47,7 +47,7 @@ namespace ukb {
 	size_t N = 0;
 	std::ifstream fh(fname.c_str(), ofstream::in);
 	if(!fh) {
-	  throw std::runtime_error(string("Can't open ") + fname);
+	  throw std::runtime_error(string("[E] reading dict: can not open ") + fname);
 	}
 	// First pass to count total number of words
 	string line;
@@ -275,7 +275,7 @@ namespace ukb {
 
 	std::ifstream fh(fname.c_str(), ofstream::in);
 	if(!fh) {
-	  throw std::runtime_error("Error: can not open dict file" + fname + "\n");
+	  throw std::runtime_error("[E] reading dict: can not open" + fname + "\n");
 	}
 
 	// Parse lines of form:
@@ -364,7 +364,7 @@ namespace ukb {
 
   WDict::WDict() {
 	if(glVars::dict_filename.size() == 0)
-	  throw std::runtime_error("Error: no dict file\n");
+	  throw std::runtime_error("[E] reading dict: no dict name\n");
 	read_wdict_file(glVars::dict_filename);
   }
 

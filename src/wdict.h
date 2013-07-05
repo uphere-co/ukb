@@ -87,6 +87,7 @@ namespace ukb {
 	std::string variant(std::string &concept_id) const;
 	std::string variant(Kb_vertex_t v) const;
 
+	// add from alternative dictionary file
 	void read_alternate_file(const std::string & fname);
 	friend std::ostream& operator<<(std::ostream & o, const WDict & dict);
 
