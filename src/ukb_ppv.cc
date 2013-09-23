@@ -331,6 +331,7 @@ bool client_stop_server(unsigned int port) {
   return true;
 }
 
+void load_kb_dict() {}
 
 int main(int argc, char *argv[]) {
 
@@ -648,12 +649,7 @@ int main(int argc, char *argv[]) {
 	// accept malformed contexts, as we don't want the daemon to die.
 	glVars::input::swallow = true;
 	cout << "Starting UKB daemon on port " << lexical_cast<string>(port) << " ... ";
-	if (!start_daemon(port, &handle_server_read)) {
-	  cout << "Error!\n";
-	  return 1;
-	}
-	cout << "done" << "\n";
-	return 0;
+	return start_daemon(port, &load_kb_dict, &handle_server_read);
   }
 
   // create stream from input file

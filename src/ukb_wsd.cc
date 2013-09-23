@@ -3,9 +3,11 @@
 #include "globalVars.h"
 #include "kbGraph.h"
 #include "disambGraph.h"
+#include "fileElem.h"
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <syslog.h>
 
 #include "ukbServer.h"
 
@@ -45,6 +47,9 @@ bool use_dfs_dgraph = false;
 int opt_out_semcor = false;
 dis_method opt_dmethod = ppr;
 string cmdline;
+string alternative_dict_fname;
+string kb_binfile; // The name of KB file
+bool opt_daemon = false;
 
 // Program options stuff
 
@@ -327,9 +332,32 @@ bool client_stop_server(unsigned int port) {
   return true;
 }
 
+void load_kb_and_dict() {
+
+  size_t dict_size = 0;
+  if (opt_daemon) {
+	string aux("Loading KB ");
+	aux += kb_binfile;
+	syslog(LOG_INFO | LOG_USER, aux.c_str());
+  } else if (glVars::verbose) {
+	cout << "Loading KB " + kb_binfile + "\n";
+  }
+  Kb::create_from_binfile(kb_binfile);
+  if (opt_daemon) {
+	string aux("Loading Dict ");
+	aux += glVars::dict_filename;
+	syslog(LOG_INFO | LOG_USER, aux.c_str());
+  } else if (glVars::verbose) {
+	cout << "Loading Dict " + glVars::dict_filename + "\n";
+  }
+  dict_size = WDict::instance().size();
+  if (alternative_dict_fname.size()) {
+	WDict::instance().read_alternate_file(alternative_dict_fname);
+  }
+}
+
 int main(int argc, char *argv[]) {
 
-  string kb_binfile("");
 
   map<string, dgraph_rank_methods> map_dgraph_ranks;
 
@@ -339,7 +367,6 @@ int main(int argc, char *argv[]) {
   map_dgraph_ranks["static"] = dstatic;
 
   bool opt_do_test = false;
-  bool opt_daemon = false;
   bool opt_client = false;
   bool opt_shutdown = false;
 
@@ -353,8 +380,6 @@ int main(int argc, char *argv[]) {
   vector<string> input_files;
   string fullname_in;
   ifstream input_ifs;
-
-  string alternative_dict_fname;
 
   unsigned int port = 10000;
   size_t iterations = 0;
@@ -687,37 +712,39 @@ int main(int argc, char *argv[]) {
 
   if (check_convergence) set_pr_convergence(iterations, thresh);
 
+  // if --daemon, fork server process (has to be done before loading KB and dictionary)
+  if (opt_daemon) {
+	try {
+	  // Get absolute names of KB and dict
+	  kb_binfile =  get_fname_absolute(kb_binfile);
+	  glVars::dict_filename = get_fname_absolute(glVars::dict_filename);
+	  alternative_dict_fname = get_fname_absolute(alternative_dict_fname);
+	} catch(std::exception& e) {
+	  cerr << e.what() << "\n";
+	  return 1;
+	}
+	// accept malformed contexts, as we don't want the daemon to die.
+	glVars::input::swallow = true;
+	cout << "Starting UKB daemon on port " << lexical_cast<string>(port) << " ... \n";
+	if (!kb_binfile.size()) {
+	  cerr << "Error: no KB file\n";
+	  return 1;
+	}
+	return start_daemon(port, &load_kb_and_dict, &handle_server_read);
+  }
+
   // if not --client, load KB and dictionary
   if (!opt_client) {
 	if (!kb_binfile.size()) {
 	  cerr << "Error: no KB file\n";
 	  exit(1);
-	} else {
-	  size_t dict_size = 0;
-	  try {
-		Kb::create_from_binfile(kb_binfile);
-		dict_size = WDict::instance().size();
-		if (alternative_dict_fname.size()) {
-		  WDict::instance().read_alternate_file(alternative_dict_fname);
-		}
-	  } catch (std::exception & e) {
-		cerr << e.what() << "\n";
-		return dict_size == 0;
-	  }
 	}
-  }
-
-  // if --daemon, launch server and exit
-  if (opt_daemon) {
-	// accept malformed contexts, as we don't want the daemon to die.
-	glVars::input::swallow = true;
-	cout << "Starting UKB daemon on port " << lexical_cast<string>(port) << " ... ";
-	if (!start_daemon(port, &handle_server_read)) {
-	  cout << "Error!\n";
+	try {
+	  load_kb_and_dict();
+	} catch (std::exception & e) {
+	  cerr << e.what() << "\n";
 	  return 1;
 	}
-	cout << "done" << "\n";
-	return 0;
   }
 
   // create stream from input file
@@ -752,8 +779,8 @@ int main(int argc, char *argv[]) {
   try {
 	dispatch_run(std::cin, std::cout);
   } catch (std::exception & e) {
-    cerr << "Error reading " << fullname_in << "\n" << e.what() << "\n";
-    return 0;
+	cerr << "Error reading " << fullname_in << "\n" << e.what() << "\n";
+	return 0;
   }
 
   return 0;

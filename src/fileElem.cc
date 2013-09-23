@@ -42,6 +42,13 @@ namespace ukb {
 #endif
   }
 
+  std::string get_fname_absolute(const std::string & fname) {
+
+	fs::path p(fname);
+
+	return fs::canonical(fs::absolute(fs::path(fname))).string();
+  }
+
   vector<string> extract_input_files(const string & fullname,
 									 const string & extension) {
 

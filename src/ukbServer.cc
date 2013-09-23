@@ -7,7 +7,7 @@
 
 namespace ukb {
 
-  bool start_daemon(unsigned int port, bool (*func)(sSession &)) {
+  int start_daemon(unsigned int port, void (*pre)(), bool (*func)(sSession &)) {
 
 	// Code "borrowed" from asio daemon example (boost license).
 
@@ -21,7 +21,7 @@ namespace ukb {
 
 	} catch (std::exception& e) {
 	  std::cerr << "[E] can not start daemon: " << e.what() << std::endl;
-	  return false;
+	  return 1;
 	}
 
 	try {
@@ -123,6 +123,8 @@ namespace ukb {
 	  io_service.notify_fork(boost::asio::io_service::fork_child);
 
 	  // The io_service can now be used normally.
+	  // Call load callback
+	  (*pre)();
 	  syslog(LOG_INFO | LOG_USER, "UKB daemon started");
 	  io_service.run();
 	  syslog(LOG_INFO | LOG_USER, "UKB daemon stopped");
@@ -130,7 +132,7 @@ namespace ukb {
 	  syslog(LOG_ERR | LOG_USER, "[E] daemon: %s", e.what());
 	}
 	delete server;
-	return true;
+	return 0;
   }
 
   /////////////////////////////////////////////////////////////
