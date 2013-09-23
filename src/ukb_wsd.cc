@@ -688,20 +688,22 @@ int main(int argc, char *argv[]) {
   if (check_convergence) set_pr_convergence(iterations, thresh);
 
   // if not --client, load KB and dictionary
-  if (!kb_binfile.size() and !opt_client) {
-	cerr << "Error: no KB file\n";
-	exit(1);
-  } else {
-	size_t dict_size = 0;
-	try {
-	  Kb::create_from_binfile(kb_binfile);
-	  dict_size = WDict::instance().size();
-	  if (alternative_dict_fname.size()) {
-		WDict::instance().read_alternate_file(alternative_dict_fname);
+  if (!opt_client) {
+	if (!kb_binfile.size()) {
+	  cerr << "Error: no KB file\n";
+	  exit(1);
+	} else {
+	  size_t dict_size = 0;
+	  try {
+		Kb::create_from_binfile(kb_binfile);
+		dict_size = WDict::instance().size();
+		if (alternative_dict_fname.size()) {
+		  WDict::instance().read_alternate_file(alternative_dict_fname);
+		}
+	  } catch (std::exception & e) {
+		cerr << e.what() << "\n";
+		return dict_size == 0;
 	  }
-	} catch (std::exception & e) {
-	  cerr << e.what() << "\n";
-	  return dict_size == 0;
 	}
   }
 
