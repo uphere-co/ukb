@@ -7,9 +7,13 @@
 
 namespace ukb {
 
-  int start_daemon(unsigned int port, void (*pre)(), bool (*func)(sSession &)) {
+  int start_daemon(unsigned int port, void (*load_kb_dict)(), bool (*func)(sSession &)) {
 
 	// Code "borrowed" from asio daemon example (boost license).
+
+	int fd[2]; // Pipe for communicating btw. parent and (second) child
+	int nbytes;
+	char buffer[256];
 
 	boost::asio::io_service io_service;
 	sServer *server;
@@ -24,6 +28,7 @@ namespace ukb {
 	  return 1;
 	}
 
+	pipe(fd);
 	try {
 
 	  // Register signal handlers so that the daemon may be shut down. You may
@@ -58,12 +63,20 @@ namespace ukb {
 		  //   io_service.notify_fork(boost::asio::io_service::fork_prepare);
 		  //
 		  // should also precede the second fork().
+		  close(fd[1]); // Parent process closes up output side of pipe
+		  nbytes = read(fd[0], buffer, sizeof(buffer)); // wait until receive notification from child
+		  if (nbytes < 0 or strcmp("OK",buffer)) {
+			std::cerr << "Error initializing server\n" << buffer << "\n";
+			exit(1);
+		  }
 		  exit(0);
 		} else {
 		  syslog(LOG_ERR | LOG_USER, "First fork failed: %m");
 		  exit(1);
 		}
 	  }
+
+	  close(fd[0]); // Child process closes up input side of pipe
 
 	  // Make the process a new session leader. This detaches it from the
 	  // terminal.
@@ -123,9 +136,21 @@ namespace ukb {
 	  io_service.notify_fork(boost::asio::io_service::fork_child);
 
 	  // The io_service can now be used normally.
+
+	  // Pipe for communicating with parent
 	  // Call load callback
-	  (*pre)();
+	  try {
+		(*load_kb_dict)();
+	  } catch (std::exception& e) {
+		strncpy(buffer,e.what(), 255);
+		buffer[254] = '\0'; // prevent exception messages with more than 256 chars
+		write(fd[1], buffer, (strlen(buffer)+1));
+		throw e;
+	  }
+	  strcpy(buffer, "OK");
+	  write(fd[1], buffer, (strlen(buffer)+1));
 	  syslog(LOG_INFO | LOG_USER, "UKB daemon started");
+	  close(fd[1]); // close up also the ouput pipe
 	  io_service.run();
 	  syslog(LOG_INFO | LOG_USER, "UKB daemon stopped");
 	} catch (std::exception& e) {
