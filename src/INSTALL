@@ -8,11 +8,11 @@ following Boost libraries:
       * boost tokenizer
       * boost lexical cast
       * boost numeric conversions
-      * boost timer
 	  * boost asio
 
 if you need to compile the boost libraries yourself, you should to call the
 'bootstrap.sh' script and then use b2 with the --layout=system option. 
+
 
 % ./bootstrap.sh
 % ./b2 install --layout=system

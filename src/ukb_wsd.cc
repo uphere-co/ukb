@@ -26,7 +26,7 @@ using namespace boost;
 /////////////////////////////////////////////////////////////
 // Global variables
 
-
+string stra;
 enum dgraph_rank_methods {
   dppr,
   dppr_w2w,
@@ -44,7 +44,7 @@ enum dis_method {
 
 dgraph_rank_methods dgraph_rank_method = dstatic;
 bool use_dfs_dgraph = false;
-int opt_out_semcor = false;
+
 dis_method opt_dmethod = ppr;
 string cmdline;
 string alternative_dict_fname;
@@ -194,7 +194,6 @@ void dis_csent_ppr(CSentence & cs) {
   }
 }
 
-
 void dis_csent_ppr_by_word(CSentence & cs) {
 
   // fall back to static if csentence has only one word
@@ -248,8 +247,7 @@ void dispatch_run(istream & is, ostream & os) {
   CSentence cs;
   while (cs.read_aw(is, l_n)) {
 	dispatch_run_cs(cs);
-	if (opt_out_semcor) cs.print_csent_semcor_aw(os);
-	else cs.print_csent_simple(os);
+	cs.print_csent(os);
 	cs = CSentence();
   }
 }
@@ -272,8 +270,7 @@ bool handle_server_read(sSession & session) {
 	  CSentence cs(ctx_id, ctx);
 	  dispatch_run_cs(cs);
 	  ostringstream oss;
-	  if (opt_out_semcor) cs.print_csent_semcor_aw(oss);
-	  else cs.print_csent_simple(oss);
+	  cs.print_csent(oss);
 	  session.send(oss.str());
 	}
   } catch (std::exception& e)	{
@@ -345,15 +342,18 @@ void load_kb_and_dict() {
   Kb::create_from_binfile(kb_binfile);
   if (opt_daemon) {
 	string aux("Loading Dict ");
-	aux += glVars::dict_filename;
+	aux += glVars::dict::text_fname;
 	syslog(LOG_INFO | LOG_USER, aux.c_str());
   } else if (glVars::verbose) {
-	cout << "Loading Dict " + glVars::dict_filename + "\n";
+	cout << "Loading Dict " + glVars::dict::text_fname + "\n";
   }
   dict_size = WDict::instance().size();
   if (alternative_dict_fname.size()) {
 	WDict::instance().read_alternate_file(alternative_dict_fname);
   }
+}
+
+void test(istream & fh_in) {
 }
 
 int main(int argc, char *argv[]) {
@@ -403,6 +403,7 @@ int main(int argc, char *argv[]) {
     ("version", "Show version.")
     ("kb_binfile,K", value<string>(), "Binary file of KB (see compile_kb).")
     ("dict_file,D", value<string>(), "Dictionary text file.")
+    ("dict_binfile", value<string>(), "Dictionary binary file.")
     ;
 
   options_description po_desc_wsd("WSD methods");
@@ -425,7 +426,7 @@ int main(int argc, char *argv[]) {
 
   options_description po_desc_prank("pageRank general options");
   po_desc_prank.add_options()
-    ("prank_weight,w", "Use weigths in pageRank calculation. Serialized graph edges must have some weight.")
+    ("prank_weight,w", "Use weights in pageRank calculation. Serialized graph edges must have some weight.")
     ("prank_iter", value<size_t>(), "Number of iterations in pageRank. Default is 30.")
     ("prank_threshold", value<float>(), "Threshold for stopping PageRank. Default is zero. Good value is 0.0001.")
     ("prank_damping", value<float>(), "Set damping factor in PageRank equation. Default is 0.85.")
@@ -468,7 +469,6 @@ int main(int argc, char *argv[]) {
     ("bcomp_dictfile,W", value<string>(), "Backward compatibility with -D.")
     ("only_ctx_words,C", "Backward compatibility with -C.")
     ("concept_graph,G", "Backward compatibility with -G.")
-    ("semcor", "Output Semcor key file.")
     ("dgraph", "Backward compatibility with --dgraph.")
     ("test,t", "(Internal) Do a test.")
     ("input-file",value<string>(), "Input file.")
@@ -594,11 +594,15 @@ int main(int argc, char *argv[]) {
     }
 
     if (vm.count("bcomp_dictfile")) {
-      glVars::dict_filename = vm["bcomp_dictfile"].as<string>();
+      glVars::dict::text_fname = vm["bcomp_dictfile"].as<string>();
     }
 
     if (vm.count("dict_file")) {
-      glVars::dict_filename = vm["dict_file"].as<string>();
+      glVars::dict::text_fname = vm["dict_file"].as<string>();
+    }
+
+    if (vm.count("dict_binfile")) {
+      glVars::dict::bin_fname = vm["dict_binfile"].as<string>();
     }
 
     if (vm.count("dict_strict")) {
@@ -646,10 +650,6 @@ int main(int argc, char *argv[]) {
 
     if (vm.count("allranks")) {
       glVars::output::allranks = true;
-    }
-
-    if (vm.count("semcor")) {
-      opt_out_semcor = 1;
     }
 
     if (vm.count("test")) {
@@ -717,7 +717,7 @@ int main(int argc, char *argv[]) {
 	try {
 	  // Get absolute names of KB and dict
 	  kb_binfile =  get_fname_absolute(kb_binfile);
-	  glVars::dict_filename = get_fname_absolute(glVars::dict_filename);
+	  glVars::dict::text_fname = get_fname_absolute(glVars::dict::text_fname);
 	  alternative_dict_fname = get_fname_absolute(alternative_dict_fname);
 	} catch(std::exception& e) {
 	  cerr << e.what() << "\n";

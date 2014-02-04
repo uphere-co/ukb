@@ -19,16 +19,29 @@ namespace ukb {
 
 	// Type of CWords:
 	//
-	// cw_ctxword: context word. Affects initial PV calculation but is not disambiguated.
-	// cw_tgtword: target word: Affects initial PV calculation and is disambiguated.
-	// cw_concept: concept. Affects initial PV calculation and is not diambiguated
-	// cw_tgtword_nopv: target 'nopv' word. Does not affect initial PV calculation and will be disambiguated.
+
+	// cw_ctxword: context word. Affects initial PV calculation but is not
+	//             disambiguated.
+	//
+	// cw_tgtword: target word: Affects initial PV calculation and is
+	//             disambiguated.
+	//
+	// cw_concept: concept. Affects initial PV calculation and is not
+	//             diambiguated
+	//
+	// cw_tgtword_nopv: target 'nopv' word. Does not affect initial PV
+	//                  calculation and will be disambiguated.
+	//
+	// cw_ctxword_nopv: context 'nopv' word. Does not affect initial PV
+	//                  calculation and will not be disambiguated. Useful for
+	//                  'grouping' concepts.
 
 	enum cwtype {
 	  cw_ctxword = 0,
 	  cw_tgtword = 1,
 	  cw_concept = 2,
 	  cw_tgtword_nopv = 3,
+	  cw_ctxword_nopv = 4,
 	  cw_error
 	};
 
@@ -46,28 +59,28 @@ namespace ukb {
 
 	// Attach synsets of a new lemma to the CWord.
 	//
-	// Note, the CWord does not track the lemma
+	// Note, the lemma of the CWord remains untouched
 
 	void attach_lemma(const std::string & lemma, const std::string & pos = std::string());
 
-	// reset concepts attached to the cword
-	void reset_concepts(std::map<std::string, float> & C);
+	// set concepts attached to the cword (used in tgt_noppv type cwords)
+	size_t set_concepts(std::map<std::string, float> & C);
 
 	iterator begin() {return m_syns.begin();}
 	iterator end() {return m_syns.end();}
 	const_iterator begin() const {return m_syns.begin();}
 	const_iterator end() const {return m_syns.end();}
+
 	size_type size() const {return m_syns.size(); }
 
 	const std::string & syn(size_t i) const { return m_syns[i];}
 	float rank(size_t i) const { return m_ranks[i];}
 
-	std::string word() const { return w; }
+	std::string word() const { return m_w; }
 
 	std::string wpos() const;
 
 	std::string id() const {return m_id;}
-	std::string get_pos() const {return m_pos;}
 
 	float get_weight() const { return m_weight;}
 	float get_linkw_factor() const { return m_linkw_factor; }
@@ -83,7 +96,6 @@ namespace ukb {
 	cwtype type() const { return m_type; }
 
 	void empty_synsets();
-	std::vector<std::string> & get_syns_vector() { return m_syns; }
 	const std::vector<std::pair<Kb_vertex_t, float> > & V_vector() const { return m_V; }
 
 	template <typename Map>
@@ -110,9 +122,7 @@ namespace ukb {
 	void disamb_cword();
 
 	friend std::ostream& operator<<(std::ostream & o, const CWord & cw_);
-	std::ostream & print_cword_simple(std::ostream & o) const;
-	std::ostream & print_cword_aw(std::ostream & o) const;
-	std::ostream & print_cword_semcor_aw(std::ostream & o) const;
+	std::ostream & print_cword(std::ostream & o) const;
 	friend class CSentence;
 
 	// Debug
@@ -122,11 +132,9 @@ namespace ukb {
   private:
 
 	size_t link_dict_concepts(const std::string & lemma, const std::string & pos);
-	void read_from_stream (std::ifstream & is);
-	std::ofstream & write_to_stream(std::ofstream & o) const;
 	void shuffle_synsets();
 
-	std::string w;
+	std::string m_w;
 	std::string m_id;
 	std::string m_pos; // 'n', 'v', 'a', 'r' or 0 (no pos)
 	float m_weight;     // Initial weight for PPV
@@ -136,7 +144,7 @@ namespace ukb {
 	float m_linkw_factor; // 1 / (sum of all link weights)
 	cwtype m_type;
 	bool m_disamb;      // If word is disambiguated, that is, if the synset
-	// are ordered according to their ranks
+	                    // are ordered according to their ranks
   };
 
   class CSentence {
@@ -150,32 +158,33 @@ namespace ukb {
 	typedef std::vector<CWord>::value_type value_type;
 	typedef std::vector<CWord>::size_type size_type;
 
-	CSentence() {};
-	CSentence(const std::string & id, const std::string & ctx);
-
-	CSentence(const CSentence & cs_) : v(cs_.v) , cs_id(cs_.cs_id) {};
+	CSentence() : m_tgtN(0) {};
+	CSentence(const std::vector<std::string> & sent_);
+	CSentence(const std::string & id, const std::string & ctx_str);
+	CSentence(const CSentence & cs_) : m_tgtN(0), m_v(cs_.m_v) , m_id(cs_.m_id) {};
 	CSentence & operator=(const CSentence & cs_);
 
 	void append(const CSentence & cs_);
 
-	iterator begin() {return v.begin();}
-	const_iterator begin() const {return v.begin();}
-	iterator end() {return v.end();}
-	const_iterator end() const {return v.end();}
-	void push_back(const CWord & cw_) { v.push_back(cw_); }
-	reference back() {return v.back();}
-	const_reference back() const {return v.back();}
+	iterator begin() {return m_v.begin();}
+	const_iterator begin() const {return m_v.begin();}
+	iterator end() {return m_v.end();}
+	const_iterator end() const {return m_v.end();}
+	void push_back(const CWord & cw_) { m_v.push_back(cw_); }
+	reference back() {return m_v.back();}
+	const_reference back() const {return m_v.back();}
 
 	const CWord & operator[]( int i ) const {
-	  return v[i];
+	  return m_v[i];
 	}
 
 	CWord & operator[]( int i ) {
-	  return v[i];
+	  return m_v[i];
 	}
 
-	size_type size() const {return v.size();}
-	std::string id() const {return cs_id;}
+	size_type size() const {return m_v.size();}
+	size_type has_tgtwords() const { return m_tgtN; }
+	std::string id() const {return m_id;}
 
 	void distinguished_synsets(std::vector<std::string> & res) const;
 
@@ -184,20 +193,12 @@ namespace ukb {
 	void write_to_binfile (const std::string & fName) const;
 	void read_from_binfile (const std::string & fName);
 	friend std::ostream& operator<<(std::ostream & o, const CSentence & cs_);
-	std::ostream & print_csent_aw(std::ostream & o) const;
-	std::ostream & print_csent_semcor_aw(std::ostream & o) const;
-
-	std::ostream & print_csent_simple(std::ostream & o) const;
+	std::ostream & print_csent(std::ostream & o) const;
 	std::ostream & debug(std::ostream & o) const;
   private:
-
-	static void split(const std::string & str, std::vector<std::string> & out);
-	void parse_ctx(const std::vector<std::string> & ctx);
-
-	void read_from_stream (std::ifstream & is);
-	std::ofstream & write_to_stream(std::ofstream & o) const;
-	std::vector<CWord> v;
-	std::string cs_id;
+	size_t m_tgtN; // number of target words in Csentence
+	std::vector<CWord> m_v;
+	std::string m_id;
   };
 
   bool calculate_kb_ppr(const CSentence & cs,
@@ -211,8 +212,8 @@ namespace ukb {
 
   bool calculate_kb_ppv_csentence(CSentence & cs, std::vector<float> & res);
 
-  void disamb_csentence_kb(CSentence & cs,
-							const std::vector<float> & ranks);
+  bool disamb_csentence_kb(CSentence & cs,
+						   const std::vector<float> & ranks);
 
 
   // Functions for calculating initial PV given a CSentence

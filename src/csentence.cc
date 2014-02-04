@@ -14,6 +14,10 @@ namespace ukb {
   using namespace std;
   using namespace boost;
 
+  static void push_ctx(const vector<string> & ctx,
+					   vector<CWord> & cws,
+					   size_t & tgtN);
+
   static CWord::cwtype cast_int_cwtype(int i) {
 	CWord::cwtype res;
 
@@ -29,6 +33,9 @@ namespace ukb {
 	  break;
 	case 3:
 	  res = CWord::cw_tgtword_nopv;
+	  break;
+	case 4:
+	  res = CWord::cw_ctxword_nopv;
 	  break;
 	default:
 	  res = CWord::cw_error;
@@ -93,41 +100,41 @@ namespace ukb {
   }
 
   CWord::CWord(const string & w_, const string & id_, const string & pos_, cwtype type_, float wght_)
-	: w(w_), m_id(id_), m_pos(pos_), m_weight(wght_), m_type(type_) {
+	: m_w(w_), m_id(id_), m_pos(pos_), m_weight(wght_), m_type(type_) {
 
-	switch(m_type) {
-	case cw_concept:
+	string empty_str;
 
+	if (m_type == cw_concept) {
 	  Kb_vertex_t u;
 	  bool P;
-	  tie(u, P) = ukb::Kb::instance().get_vertex_by_name(w);
+	  tie(u, P) = ukb::Kb::instance().get_vertex_by_name(m_w);
 	  if (!P) {
-		throw std::logic_error("CWord concept " + w + " not in KB");
+		throw std::logic_error("CWord concept " + m_w + " not in KB");
 	  }
-	  m_syns.push_back(w);
+	  m_syns.push_back(m_w);
 	  m_V.push_back(make_pair(u, 1.0f));
 	  m_ranks.push_back(0.0f);
 	  m_linkw_factor = 1.0;
-	  break;
-	case cw_tgtword_nopv:
-	case cw_ctxword:
-	case cw_tgtword:
-	  // empty POS string when no pos filtering
-	  if(!glVars::input::filter_pos)
-		string("").swap(m_pos);
-	  if (!link_dict_concepts(w, m_pos)) {
-		// empty CWord
-		empty_synsets();
-	  }
-	  m_disamb = (1 == m_syns.size()); // monosemous words are disambiguated
-	  break;
-	default:
-	  break;
+	  m_pos.swap(empty_str); // concepts have no POS
+	  return;
 	}
+	// empty POS string when no pos filtering
+	if(!glVars::input::filter_pos)
+	  m_pos.swap(empty_str);
+	m_linkw_factor = 0;
+
+	if (m_type == cw_tgtword_nopv or m_type == cw_ctxword_nopv) return; // if nopv we are done
+
+	// m_type == cw_ctxword or cw_tgtword:
+	if (!link_dict_concepts(m_w, m_pos)) {
+	  // empty CWord
+	  empty_synsets();
+	}
+	m_disamb = (1 == m_syns.size()); // monosemous words are disambiguated
   }
 
   void CWord::attach_lemma(const string & lemma, const string & pos) {
-	if (!w.size())
+	if (!m_w.size())
 	  throw std::logic_error("CWord::attach_lemma error: can't attach lemma to an empty CWord.");
 	if (m_type == cw_concept)
 	  throw std::logic_error("CWord::attach_lemma error: can't attach lemma to a CWord of type cw_concept.");
@@ -136,15 +143,21 @@ namespace ukb {
 	link_dict_concepts(lemma, pos);
   }
 
-  void CWord::reset_concepts(map<string, float> & C) {
+  // (Re)Set cword and link it to new concepts.
+  // (used in tgt_noppv type cwords)
+  // return: number of new concepts
+
+  size_t CWord::set_concepts(map<string, float> & C) {
 
 	this->empty_synsets();
 
 	Kb_vertex_t u;
 	bool P;
-	float total_w = 0.0;
+	float total_w = 0.0f;
+	size_t N = 0;
 	for(map<string, float>::iterator it = C.begin(), end = C.end();
 		it != end; ++it) {
+	  N++;
 	  tie(u, P) = ukb::Kb::instance().get_vertex_by_name(it->first);
 	  if (!P) {
 		throw std::logic_error("reset_concepts: " + it->first + " not in KB");
@@ -153,18 +166,17 @@ namespace ukb {
 	  m_V.push_back(make_pair(u, it->second));
 	  total_w += it->second;
 	}
+	if (total_w == 0.0f) return 0;
 	m_linkw_factor = 1.0 / total_w;
 	// Update ranks
 	vector<float>(m_syns.size(), 0.0).swap(m_ranks);
-  }
-
-  bool CWord::has_concept(const string & str) {
-	return std::find(m_syns.begin(), m_syns.end(), str) != m_syns.end();
+	m_disamb = (N == 1); // monosemous words are disambiguated
+	return N;
   }
 
   CWord & CWord::operator=(const CWord & cw_) {
 	if (&cw_ != this) {
-	  w = cw_.w;
+	  m_w = cw_.m_w;
 	  m_id = cw_.m_id;
 	  m_weight = cw_.m_weight;
 	  m_pos = cw_.m_pos;
@@ -180,16 +192,15 @@ namespace ukb {
 
 	if (is_synset()) return word();
 	string wpos(word());
-	string pos = get_pos();
-	if(pos.size() == 0) return wpos;
+	if(m_pos.size() == 0) return wpos;
 	wpos.append("#");
-	wpos.append(pos);
+	wpos.append(m_pos);
 	return wpos;
   };
 
   ostream & CWord::debug(ostream & o) const  {
 
-	o << "w: " << w << " \n";
+	o << "w: " << m_w << " \n";
 	o <<  "m_id: " << m_id << string(" \n");
 	o << "m_pos: "  << m_pos << string(" \n");
 	o << "m_weight: "  << lexical_cast<string>(m_weight) << string(" \n");
@@ -239,14 +250,11 @@ namespace ukb {
 	  idx[i] = i;
 	sort(idx.begin(), idx.end(), CWSort(m_ranks));
 
-	bool ranks_equal = true;
 	for(size_t i=0; i < n; ++i) {
 	  syns[i]  = m_syns[idx[i]];
 	  ranks[i] = m_ranks[idx[i]];
-	  if (ranks[i] != ranks[0])
-		ranks_equal = false;
 	}
-	if (ranks_equal) return; // If all ranks have same value the word is not disambiguated
+	if(ranks[0] == ranks[n-1]) return; // If all ranks have same value the word is not disambiguated
 	syns.swap(m_syns);
 	ranks.swap(m_ranks);
 	m_disamb = true;
@@ -257,7 +265,7 @@ namespace ukb {
 
 	//KbGraph & g = ukb::Kb::instance().graph();
 
-	o << cw_.w << "#";
+	o << cw_.m_w << "#";
 	if (cw_.m_pos.size())
 	  o << cw_.m_pos;
 	o << "#" << cw_.m_id << "#" << cw_.m_type;
@@ -285,7 +293,7 @@ namespace ukb {
 	  for(size_t i = 0; i != syns.size(); ++i) {
 		rsum += ranks[i];
 	  }
-	  norm_factor *= 1.0 / rsum;
+	  if (rsum) norm_factor *= 1.0 / rsum;
 	}
 	for(size_t i = 0; i != syns.size(); ++i) {
 	  o << " " << syns[i] << "/" << ranks[i]*norm_factor;
@@ -293,91 +301,39 @@ namespace ukb {
 	return o;
   }
 
-  ostream & CWord::print_cword_aw(ostream & o) const {
-
-	vector<string> id_fields(split(m_id, "."));
-	assert(id_fields.size() > 0);
-	o << id_fields[0] << " " << m_id;
-	if(!glVars::output::allranks) cw_aw_print_best(o, m_syns, m_ranks);
-	else cw_aw_print_all(o, m_syns, m_ranks);
-	o << " !! " << w << "\n";
-	return o;
-  }
-
-  ostream & CWord::print_cword_semcor_aw(ostream & o) const {
-
-	if ((1 == m_syns.size()) && !glVars::output::monosemous) return o; // Don't output monosemous words
-
-	vector<string> id_fields(split(m_id, "."));
-	assert(id_fields.size() > 0);
-	o << id_fields[0] << "." << id_fields[1] << " " << m_id;
-	if(!glVars::output::allranks) cw_aw_print_best(o, m_syns, m_ranks);
-	else cw_aw_print_all(o, m_syns, m_ranks);
-	o << " !! " << w << "\n";
-	return o;
-  }
-
-  ostream & CWord::print_cword_simple(ostream & o) const {
+  ostream & CWord::print_cword(ostream & o) const {
 
 	o << m_id << " ";
 	if(!glVars::output::allranks) cw_aw_print_best(o, m_syns, m_ranks);
 	else cw_aw_print_all(o, m_syns, m_ranks);
-	o << " !! " << w << "\n";
+	o << " !! " << m_w << "\n";
 	return o;
   }
-
-  ////////////////////////////////////////////////////////
-  // Streaming
-
-  std::ofstream & CWord::write_to_stream(std::ofstream & o) const {
-
-	write_atom_to_stream(o,w);
-	write_atom_to_stream(o,m_id);
-	write_atom_to_stream(o,m_pos);
-	write_vector_to_stream(o,m_syns);
-	write_atom_to_stream(o,m_type);
-	return o;
-
-  };
-
-  void CWord::read_from_stream(std::ifstream & i) {
-
-	read_atom_from_stream(i,w);
-	read_atom_from_stream(i,m_id);
-	read_atom_from_stream(i,m_pos);
-	read_vector_from_stream(i,m_syns);
-	vector<float>(m_syns.size()).swap(m_ranks); // Init ranks vector
-	read_atom_from_stream(i,m_type);
-
-	m_disamb = (1 == m_syns.size());
-  };
 
   ////////////////////////////////////////////////////////////////
   // CSentence
 
-
   CSentence::CSentence(const std::string & id, const std::string & ctx_str) :
-	cs_id(id) {
+	m_tgtN(0), m_id(id) {
 	vector<string> ctx;
-	this->split(ctx_str, ctx);
-	if (ctx.size() == 0) return;
-	parse_ctx(ctx);
-  }
-
-
-  void CSentence::split(const string & str, vector<string> & out) {
-
 	char_separator<char> sep(" \t");
-	tokenizer<char_separator<char> > tok_id(str, sep);
-	vector<string>().swap(out); // empty input
-	copy(tok_id.begin(), tok_id.end(), back_inserter(out));
+	tokenizer<char_separator<char> > tok_ctx(ctx_str, sep);
+	copy(tok_ctx.begin(), tok_ctx.end(), back_inserter(ctx));
+	if (ctx.size() == 0) return;
+	try {
+	  push_ctx(ctx, m_v, m_tgtN);
+	} catch (ukb::wdict_error & e) {
+	  throw e;
+	} catch (std::exception & e) {
+	  throw std::runtime_error(string("Context error in constructor\n") + e.what());
+	}
   }
 
   struct ctw_parse_t {
 	string lemma;
 	string pos;
 	string id;
-	int dist; // 0 -> no dist; 1 -> dist; 2 -> concept (no dist)
+	int dist; // See cwtype enum.
 	float w;
 
 	ctw_parse_t() : lemma(), pos(), id(), dist(0), w(1.0) {}
@@ -416,41 +372,36 @@ namespace ukb {
 	return res;
   }
 
-  // tie nopv tgtwords with concepts appearing in context
+  static void push_ctx(const vector<string> & ctx,
+					   vector<CWord> & cws,
+					   size_t & tgtN) {
 
-  static void tie_nopv_concept(map<int, map<string, float> > & T,
-							   int nopv_idx, const string & c_str, float weight) {
-
-	map<int, map<string, float> >::iterator it;
-	if(weight == 0.0) return;
-	it = T.insert(make_pair(nopv_idx, map<string, float>())).first;
-	it->second.insert(make_pair(c_str, weight));
-  }
-
-  static void link_nopv_concepts(map<int, map<string, float> > & T,
-								 vector<CWord> & v) {
-	for(map<int, map<string, float> >::iterator it = T.begin(), end = T.end();
-		it != end; ++it) {
-	  v[it->first].reset_concepts(it->second);
-	}
-  }
-
-  // Parse a list of context words to create a CSentence
-
-  void CSentence::parse_ctx(const vector<string> & ctx) {
-
-	map<int, map<string, float> > Ties;
-	int last_nopv_idx = -1;
-	for(vector<string>::const_iterator it = ctx.begin(); it != ctx.end(); ++it) {
+	CWord *last_nopv = 0;
+	map<string, float> nopv_concepts;
+	vector<string>::const_iterator end = ctx.end();
+	for(vector<string>::const_iterator it = ctx.begin();
+		it != end or last_nopv; ++it) {
 	  try {
+		if (it == end) {
+		  // last check to fill last nopv
+		  if (!last_nopv->set_concepts(nopv_concepts)) { // false means no concepts attached
+			if (last_nopv->is_tgtword()) {
+			  tgtN--;
+			}
+			cws.pop_back();
+		  }
+		  break;
+		}
 		ctw_parse_t ctwp = parse_ctw(*it);
-		if (ctwp.lemma.size() == 0) return;
+		if (ctwp.lemma.size() == 0) {
+		  throw std::logic_error(*it + " has no lemma.");
+		}
 		string pos("");
 		CWord::cwtype cw_type = cast_int_cwtype(ctwp.dist);
 		if (cw_type == CWord::cw_error) {
 		  throw std::logic_error(*it + " fourth field is invalid.");
 		}
-		if (cw_type != CWord::cw_concept && glVars::input::filter_pos) {
+		if ((cw_type == CWord::cw_ctxword || cw_type == CWord::cw_tgtword) && glVars::input::filter_pos) {
 		  if (!ctwp.pos.size()) throw std::logic_error(*it + " has no POS.");
 		  pos = ctwp.pos;
 		}
@@ -459,21 +410,42 @@ namespace ukb {
 
 		CWord new_cw(ctwp.lemma, ctwp.id, pos, cw_type, ctwp.w);
 
-		// tie to nopv cword. Do it after CWord creation, so we are sure cw_concept is in KB
-		if (cw_type == CWord::cw_concept && last_nopv_idx != -1 && v[last_nopv_idx].has_concept(ctwp.lemma)) {
-		  tie_nopv_concept(Ties, last_nopv_idx, ctwp.lemma, ctwp.w);
-		  return;
+		if (last_nopv) {
+		  // there is a nopv element 'active'
+		  if (cw_type == CWord::cw_concept) {
+			// attach concept to nopv
+			nopv_concepts.insert(make_pair(ctwp.lemma, ctwp.w));
+			continue;
+		  }
+		  // new elem is not concept, so set last nopv with new concepts
+		  if (!last_nopv->set_concepts(nopv_concepts)) {// false means no concepts attached
+			if (last_nopv->is_tgtword()) {
+			  tgtN--;
+			}
+			cws.pop_back();
+		  }
+		  last_nopv = 0; // and reset last_nopv
 		}
 
-		if (new_cw.size()) {
-		  if (cw_type == CWord::cw_tgtword_nopv)
-			last_nopv_idx = v.size();
-		  else last_nopv_idx = -1; // any new CW resets last_nopv
-		  v.push_back(new_cw);
-		} else {
-		  // No synset for that word.
+		if (cw_type == CWord::cw_tgtword_nopv or cw_type == CWord::cw_ctxword_nopv) {
+		  // New nopv cword
+		  map<string, float>().swap(nopv_concepts);
+		  cws.push_back(new_cw);
+		  last_nopv = &cws.back();
+		  if (new_cw.is_tgtword()) {
+			tgtN++;
+		  }
+		  continue;
+		}
+		if (!new_cw.size()) {
 		  if (glVars::debug::warning)
+			// No synset for that word.
 			cerr << "W:" << *it << " can't be mapped to KB.";
+		  continue;
+		}
+		cws.push_back(new_cw);
+		if (new_cw.is_tgtword()) {
+		  tgtN++;
 		}
 	  } catch (ukb::wdict_error & e) {
 		throw e;
@@ -485,8 +457,6 @@ namespace ukb {
 		}
 	  }
 	}
-	// link concepts to nopv cwords
-	link_nopv_concepts(Ties, v);
   }
 
   // AW file read (create a csentence from a context)
@@ -494,19 +464,26 @@ namespace ukb {
   istream & CSentence::read_aw(istream & is, size_t & l_n) {
 
 	string line;
-	vector<string> ctx;
+	map<int, map<string, float> > Ties;
 
 	if(read_line_noblank(is, line, l_n)) {
+
 	  // first line is id
-	  this->split(line, ctx);
+	  char_separator<char> sep(" \t");
+	  vector<string> ctx;
+
+	  tokenizer<char_separator<char> > tok_id(line, sep);
+	  copy(tok_id.begin(), tok_id.end(), back_inserter(ctx));
 	  if (ctx.size() == 0) return is; // blank line or EOF
-	  cs_id = ctx[0];
+	  m_id = ctx[0];
+	  vector<string>().swap(ctx);
 	  // next comes the context
 	  if(!read_line_noblank(is, line, l_n)) return is;
-	  this->split(line, ctx);
+	  tokenizer<char_separator<char> > tok_ctx(line, sep);
+	  copy(tok_ctx.begin(), tok_ctx.end(), back_inserter(ctx));
 	  if (ctx.size() == 0) return is; // blank line or EOF
 	  try {
-		this->parse_ctx(ctx);
+		push_ctx(ctx, m_v, m_tgtN);
 	  } catch (ukb::wdict_error & e) {
 		throw e;
 	  } catch (std::exception & e) {
@@ -516,8 +493,7 @@ namespace ukb {
 	return is;
   }
 
-
-  // CSentence::CSentence(const vector<string> & sent) : cs_id(string()) {
+  // CSentence::CSentence(const vector<string> & sent) : m_id(string()) {
 
   //   set<string> wordS;
 
@@ -528,48 +504,52 @@ namespace ukb {
   //     set<string>::iterator it;
   //     tie(it, insertedP) = wordS.insert(*s_it);
   //     if (insertedP) {
-  //       v.push_back(CWord(*s_it));
+  //       m_v.push_back(CWord(*s_it));
   //     }
   //   }
   // }
 
   CSentence & CSentence::operator=(const CSentence & cs_) {
 	if (&cs_ != this) {
-	  v = cs_.v;
-	  cs_id = cs_.cs_id;
+	  m_tgtN = cs_.m_tgtN;
+	  m_v = cs_.m_v;
+	  m_id = cs_.m_id;
 	}
 	return *this;
   }
 
   void CSentence::append(const CSentence & cs_) {
-	vector<CWord> tenp(v.size() + cs_.v.size());
+	vector<CWord> tenp(m_v.size() + cs_.m_v.size());
 	vector<CWord>::iterator aux_it;
-	aux_it = copy(v.begin(), v.end(), tenp.begin());
-	copy(cs_.v.begin(), cs_.v.end(), aux_it);
-	v.swap(tenp);
+	aux_it = copy(m_v.begin(), m_v.end(), tenp.begin());
+	copy(cs_.m_v.begin(), cs_.m_v.end(), aux_it);
+	m_v.swap(tenp);
+	m_tgtN += cs_.m_tgtN;
   }
 
   void CSentence::distinguished_synsets(vector<string> & res) const {
 
 	vector<CWord>::const_iterator cw_it, cw_end;
-	cw_it = v.begin();
-	cw_end = v.end();
+	cw_it = m_v.begin();
+	cw_end = m_v.end();
 	for(; cw_it != cw_end; ++cw_it) {
 	  if (!cw_it->is_tgtword()) continue;
-	  copy(cw_it->begin(), cw_it->end(), back_inserter(res));
+	  for(size_t i = 0, m = cw_it->size();
+		  i < m; ++i)
+		res.push_back(cw_it->syn(i));
 	}
   }
 
   std::ostream& operator<<(std::ostream & o, const CSentence & cs_) {
-	o << cs_.cs_id << endl;
+	o << cs_.m_id << endl;
 	copy(cs_.begin(), cs_.end(), ostream_iterator<CWord>(o, " "));
 	o << "\n";
 	return o;
   }
 
   std::ostream & CSentence::debug(std::ostream & o) const {
-	o << cs_id << endl;
-	for(vector<CWord>::const_iterator it = v.begin(), end=v.end();
+	o << m_id << endl;
+	for(vector<CWord>::const_iterator it = m_v.begin(), end=m_v.end();
 		it != end; ++it) {
 	  o << "**CWord" << endl;
 	  it->debug(o);
@@ -577,50 +557,20 @@ namespace ukb {
 	return o;
   }
 
-  std::ostream & CSentence::print_csent_aw(std::ostream & o) const {
+  std::ostream & CSentence::print_csent(std::ostream & o) const {
 
-	vector<CWord>::const_iterator cw_it = v.begin();
-	vector<CWord>::const_iterator cw_end = v.end();
+	if (!m_tgtN) return o;
 
-	for(; cw_it != cw_end; ++cw_it) {
-	  if (cw_it->size() == 0) continue;
-	  if (!cw_it->is_tgtword()) continue;
-	  if (!cw_it->is_disambiguated() && !glVars::output::ties) continue;
-	  if (cw_it->is_monosemous() && !glVars::output::monosemous) return o; // Don't output monosemous words
-
-	  cw_it->print_cword_aw(o);
-	}
-	return o;
-  }
-
-  std::ostream & CSentence::print_csent_semcor_aw(std::ostream & o) const {
-
-	vector<CWord>::const_iterator cw_it = v.begin();
-	vector<CWord>::const_iterator cw_end = v.end();
+	vector<CWord>::const_iterator cw_it = m_v.begin();
+	vector<CWord>::const_iterator cw_end = m_v.end();
 
 	for(; cw_it != cw_end; ++cw_it) {
 	  if (cw_it->size() == 0) continue;
 	  if (!cw_it->is_tgtword()) continue;
 	  if (!cw_it->is_disambiguated() && !glVars::output::ties) continue;
-	  if (cw_it->is_monosemous() && !glVars::output::monosemous) return o; // Don't output monosemous words
-
-	  cw_it->print_cword_semcor_aw(o);
-	}
-	return o;
-  }
-
-  std::ostream & CSentence::print_csent_simple(std::ostream & o) const {
-
-	vector<CWord>::const_iterator cw_it = v.begin();
-	vector<CWord>::const_iterator cw_end = v.end();
-
-	for(; cw_it != cw_end; ++cw_it) {
-	  if (cw_it->size() == 0) continue;
-	  if (!cw_it->is_tgtword()) continue;
-	  if (!cw_it->is_disambiguated() && !glVars::output::ties) continue;
-	  if (cw_it->is_monosemous() && !glVars::output::monosemous) return o; // Don't output monosemous words
-	  o << cs_id << " ";
-	  cw_it->print_cword_simple(o);
+	  if (cw_it->is_monosemous() && !glVars::output::monosemous) continue; // Don't output monosemous words
+	  o << m_id << " ";
+	  cw_it->print_cword(o);
 	}
 	return o;
   }
@@ -761,6 +711,7 @@ namespace ukb {
 								CSentence::const_iterator tgtw_it,
 								vector<float> & ranks) {
 
+	if (!cs.has_tgtwords()) return false; // no target words
 	Kb & kb = ukb::Kb::instance();
 	vector<float> pv;
 
@@ -779,6 +730,8 @@ namespace ukb {
   //   3. use rank for disambiguating word
 
   int calculate_kb_ppr_by_word_and_disamb(CSentence & cs) {
+
+	if (!cs.has_tgtwords()) return 0; // no target words
 
 	Kb & kb = ukb::Kb::instance();
 	vector<float> ranks;
@@ -815,6 +768,8 @@ namespace ukb {
   //
 
   bool calculate_kb_ppv_csentence(CSentence & cs, vector<float> & res) {
+
+	if (!cs.has_tgtwords()) return false; // no target words
 
 	Kb & kb = ukb::Kb::instance();
 	bool aux;
@@ -855,8 +810,10 @@ namespace ukb {
   // Disambiguate a CSentence given a vector of ranks
   //
 
-  void disamb_csentence_kb(CSentence & cs,
+  bool disamb_csentence_kb(CSentence & cs,
 						   const vector<float> & ranks) {
+
+	if (!cs.has_tgtwords()) return false; // no target words
 
 	Kb & kb = ukb::Kb::instance();
 
@@ -872,61 +829,6 @@ namespace ukb {
 	  }
 	  cw_it->disamb_cword();
 	}
-  }
-
-
-  ////////////////////////////////////////////////////////
-  // Streaming
-
-  const size_t magic_id = 0x070704;
-
-  ofstream & CSentence::write_to_stream (std::ofstream & o) const {
-	size_t vSize = v.size();
-
-	write_atom_to_stream(o, magic_id);
-	write_atom_to_stream(o,vSize);
-	for(size_t i=0; i< vSize; ++i) {
-	  v[i].write_to_stream(o);
-	}
-	write_atom_to_stream(o,cs_id);
-	return o;
-  }
-
-  void CSentence::read_from_stream (std::ifstream & is) {
-
-	size_t vSize;
-	size_t id;
-
-	// Read a vector of CWords
-	read_atom_from_stream(is, id);
-	if (id != magic_id) {
-	  cerr << "Invalid file. Not a csentence." << endl;
-	  exit(-1);
-	}
-	read_atom_from_stream(is, vSize);
-	v.resize(vSize);
-	for(size_t i=0; i<vSize; ++i) {
-	  v[i].read_from_stream(is);
-	}
-	read_atom_from_stream(is,cs_id);
-  }
-
-  void CSentence::write_to_binfile (const std::string & fName) const {
-	ofstream fo(fName.c_str(),  ofstream::binary|ofstream::out);
-	if (!fo) {
-	  cerr << "Error: can't create" << fName << endl;
-	  exit(-1);
-	}
-	write_to_stream(fo);
-  }
-
-
-  void CSentence::read_from_binfile (const std::string & fName) {
-	ifstream fi(fName.c_str(), ifstream::binary|ifstream::in);
-	if (!fi) {
-	  cerr << "Error: can't open " << fName << endl;
-	  exit(-1);
-	}
-	read_from_stream(fi);
+	return true;
   }
 }

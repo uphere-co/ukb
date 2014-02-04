@@ -190,21 +190,62 @@ void iquery() {
   }
 }
 
+void subg(const string & initV, size_t N) {
+
+  std::vector<std::string> V;
+  std::vector<std::vector<std::string> > E;
+  Kb::instance().get_subgraph(initV, V, E, N);
+  cout << "graph UMLS_subg {\n";
+  for (size_t i = 0, im = V.size(); i != im; ++i) {
+	for(size_t j = 0, jm = E[i].size(); j != jm; ++j) {
+	  cout << V[i] << " -- " << E[i][j] << ";\n";
+	}
+  }
+  cout << "}\n";
+}
+
+void sPath(const string & sPathV) {
+
+  string source;
+  vector<string> aux,targets;
+  std::vector<std::vector<std::string> > paths;
+  aux = split(sPathV, "#");
+  if (aux.size() < 2) {
+	cerr << "Spath error: you must at least specify two nodes\n.";
+	exit(-1);
+  }
+  source = aux[0];
+  set<string> S(aux.begin() + 1, aux.end());
+  copy(S.begin(), S.end(), back_inserter(targets));
+  Kb::instance().get_shortest_paths(source, targets, paths);
+  for(std::vector<std::vector<std::string> >::iterator it = paths.begin(), end = paths.end();
+	  it != end; ++it) {
+	writeV(cout, *it);
+	cout << "\n";
+  }
+}
+
 int main(int argc, char *argv[]) {
 
   srand(3);
 
   timer load;
 
+  bool opt_dbfile = false;
   bool opt_info = false;
   bool opt_Info = false;
   bool opt_query = false;
   bool opt_iquery = false;
   bool opt_dump = false;
 
+  // subgraph options
+  string subg_init;
+  size_t subgN = 100;
+
   string fullname_out("kb_wnet.bin");
   string kb_file;
   string query_vertex;
+  string sPathV;
 
   glVars::kb::v1_kb = false; // Use v2 format
   glVars::kb::filter_src = false; // by default, don't filter relations by src
@@ -221,6 +262,7 @@ int main(int argc, char *argv[]) {
   const char desc_header[] = "compile_kb: create a serialized image of the KB\n"
     "Usage:\n"
     "compile_kb -o output.bin [-f \"src1, src2\"] kb_file.txt kb_file.txt ... -> Create a KB image reading relations textfiles.\n"
+    "compile_kb -o dict.bin -D dict_textfile --serialize_dict kb_file.bin -> Create a dictionary image reading text dictionary.\n"
     "compile_kb -i kb_file.bin -> Get info of a previously compiled KB.\n"
     "compile_kb -q concept-id kb_file.bin -> Query a node on a previously compiled KB.\n"
     "Options:";
@@ -232,6 +274,7 @@ int main(int argc, char *argv[]) {
     ("help,h", "This help page.")
     ("version", "Show version.")
     ("verbose,v", "Be verbose.")
+    ("serialize_dict", "Serialize dictionary.")
     ;
 
   options_description po_desc_create("Options for creating binary graphs");
@@ -241,6 +284,7 @@ int main(int argc, char *argv[]) {
     ("undirected,U", "Force undirected graph.")
     ("rtypes,r", "Keep relation types on edges.")
 	("minput", "Do not die when dealing with malformed input.")
+	("nopos", "Don't filter words by Part of Speech when reading dict.")
 	("note", value<string>(), "Add a comment to the graph.")
 	;
 
@@ -251,7 +295,10 @@ int main(int argc, char *argv[]) {
     ("dump", "Dump a serialized graph. Warning: very verbose!.")
     ("query,q", value<string>(), "Given a vertex name, display its relations.")
     ("iquery,Q", "Interactively query graph.")
-    ("dict_file,D", value<string>(), "Word to synset map file. Useful only when used when querying (--quey or --iquery).")
+	("subG,S", value<string>(), "Get a subgraph starting at this vertex. See subG_depth.")
+	("subG_N", value<size_t>(), "Max. number of nodes in subgraph (see --subG). Default is 100.")
+	("sPaths", value<string>(), "Get shortest paths. Value is a vector of nodes, separated by character '#'. First node is source.")
+    ("dict_file,D", value<string>(), "Dictionary text file. Use only when querying (--quey or --iquery) or when creating serialized dict (--serialize_dict).")
 	;
 
   options_description po_hidden("Hidden");
@@ -292,6 +339,14 @@ int main(int argc, char *argv[]) {
       glVars::verbose = 1;
     }
 
+    if (vm.count("nopos")) {
+	  glVars::input::filter_pos = false;
+    }
+
+    if (vm.count("serialize_dict")) {
+      opt_dbfile = true;
+    }
+
     if (vm.count("info")) {
       opt_info = true;
     }
@@ -304,8 +359,20 @@ int main(int argc, char *argv[]) {
       opt_iquery = true;
     }
 
+    if (vm.count("subG")) {
+      subg_init = vm["subG"].as<string>();
+    }
+
+    if (vm.count("subG_depth")) {
+      subgN = vm["subG_depth"].as<size_t>();
+    }
+
+    if (vm.count("sPaths")) {
+      sPathV = vm["sPaths"].as<string>();
+    }
+
     if (vm.count("dict_file")) {
-      glVars::dict_filename = vm["dict_file"].as<string>();
+      glVars::dict::text_fname = vm["dict_file"].as<string>();
 	  opt_variants = true;
     }
 
@@ -401,12 +468,38 @@ int main(int argc, char *argv[]) {
 	return 0;
   }
 
+  if(subg_init.size()) {
+	Kb::create_from_binfile(kb_file);
+	subg(subg_init, subgN);
+	return 0;
+  }
+
+  if(sPathV.size()) {
+	Kb::create_from_binfile(kb_file);
+	sPath(sPathV);
+	return 0;
+  }
+
   if (glVars::verbose) {
     show_global_variables(cerr);
   }
 
   if (glVars::verbose)
     cerr << "Reading relations"<< endl;
+
+  if (opt_dbfile) {
+	// Serialize dict
+	if (glVars::dict::text_fname.size() == 0) {
+	  cerr << "--serialize_dict error: -D option missing.\n";
+	}
+	if (kb_file.size() == 0) {
+	  cerr << "--serialize_dict error: graph missing.\n";
+	  exit(-1);
+	}
+	Kb::create_from_binfile(kb_file);
+	WDict::instance().write_wdict_binfile(fullname_out);
+	exit(0);
+  }
 
   try {
 	// If first input file is "-", open std::cin

@@ -186,8 +186,13 @@ namespace ukb {
   };
 
 
-  bool Kb::bfs (Kb_vertex_t src,
-				std::vector<Kb_vertex_t> & parents) const {
+  // Note:
+  //
+  // after bfs, if (parents[v] == v) and (v != u), then u and v are not
+  // connected in the graph.
+
+  bool Kb::bfs(Kb_vertex_t src,
+			   std::vector<Kb_vertex_t> & parents) const {
 
 	size_t m = num_vertices(*m_g);
 	if(parents.size() == m) {
@@ -350,6 +355,36 @@ namespace ukb {
 	}
   }
 
+  bool Kb::get_shortest_paths(const std::string & src,
+							  const std::vector<std::string> & targets,
+							  std::vector<std::vector<std::string> > & paths) {
+	vector<Kb_vertex_t> parents;
+	Kb_vertex_t u;
+	bool aux;
+	tie(u,aux) = get_vertex_by_name(src);
+	if(!aux) return false;
+	std::vector<std::vector<std::string> >().swap(paths);
+	this->bfs(u, parents);
+	for(std::vector<std::string>::const_iterator it = targets.begin(), end = targets.end();
+		it != end; ++it) {
+	  Kb_vertex_t v;
+	  tie(v,aux) = get_vertex_by_name(*it);
+	  if (!aux) continue;
+	  if (parents[v] == v) continue; // either (u == v) or v is not connected to u.
+	  paths.push_back(vector<string>());
+	  vector<string> & P = paths.back();
+	  // iterate until source is met
+	  P.push_back(get_vertex_name(v));
+	  while(1) {
+		v = parents[v];
+		P.push_back(get_vertex_name(v));
+		if (v == u) break;
+	  }
+	  std::reverse(P.begin(), P.end());
+	}
+	return paths.size();
+  }
+
 
   ////////////////////////////////////////////////////////////////////////////////
   // strings <-> vertex_id
@@ -366,9 +401,26 @@ namespace ukb {
 	m_rtypes.add_type(rel, (*m_g)[e].etype);
   }
 
-  std::vector<std::string> Kb::get_edge_reltypes(Kb_edge_t e) const {
+  std::vector<std::string> Kb::edge_reltypes(Kb_edge_t e) const {
 	return m_rtypes.tvector((*m_g)[e].etype);
   }
+
+  float Kb::get_edge_weight(Kb_edge_t e) const {
+	return (*m_g)[e].weight;
+  }
+
+  void Kb::set_edge_weight(Kb_edge_t e, float w) {
+	(*m_g)[e].weight = w;
+  }
+
+  std::pair<Kb_out_edge_iter_t, Kb_out_edge_iter_t> Kb::out_neighbors(Kb_vertex_t u) {
+  	return out_edges(u, *m_g);
+  }
+
+  std::pair<Kb_in_edge_iter_t, Kb_in_edge_iter_t> Kb::in_neighbors(Kb_vertex_t u) {
+  	return in_edges(u, *m_g);
+  }
+
 
   ////////////////////////////////////////////////////////////////////////////////
   // Query and retrieval
@@ -466,7 +518,7 @@ namespace ukb {
   // i: (inverse) relation type of edge v->u (hyponym, etc). Optional. Useless on undirected graphs.
   // s: source of relation (wn30, kb17, etc). Optional.
   // d: wether the relation is directed. Optional, default is undirected.
-  // w: relation weigth. Must be positive. Optional.
+  // w: relation weight. Must be positive. Optional.
 
 
   struct rel_parse {
@@ -760,7 +812,7 @@ namespace ukb {
 		o << "\n";
 	  for(; e != e_end; ++e) {
 		o << "  ";
-		vector<string> r = get_edge_reltypes(*e);
+		vector<string> r = edge_reltypes(*e);
 		writeV(o, r);
 		o << " " << (*m_g)[target(*e, *m_g)].name;
 		o << " (" << (*m_g)[*e].weight << ")\n";

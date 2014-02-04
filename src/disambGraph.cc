@@ -154,9 +154,9 @@ namespace ukb {
   }
 
   ////////////////////////////////////////////////////////////////////////////////
-  // Reset edge weigths
+  // Reset edge weights
 
-  void DisambGraph::reset_edge_weigths() {
+  void DisambGraph::reset_edge_weights() {
 	graph_traits<DisambG>::edge_iterator it, end;
 	tie(it, end) = edges(g);
 	for(;it != end; ++it)
@@ -170,12 +170,6 @@ namespace ukb {
 							  vector<CWord>::const_iterator s_it,
 							  vector<CWord>::const_iterator s_end,
 							  DisambGraph & dgraph) {
-
-	//   if (src_str == "00663525-a") {
-	//     int deb;
-	//     cerr << "Eooo!" << endl;
-	//     deb++;
-	//   }
 
 	//bfs from src
 	std::vector<Kb_vertex_t> parents;
@@ -440,6 +434,8 @@ namespace ukb {
 	// get pv pointing to KbGraph vertex_t
 	// transform into Dis_vertex_t
 
+	if (!cs.has_tgtwords()) return false; // no target words
+
 	vector<float> pv;
 	size_t  pv_m = pv_from_cs_onlyC(cs, pv, exclude_word_it);
 	if (!pv_m) return false;
@@ -492,8 +488,10 @@ namespace ukb {
   }
 
 
-  void disamb_csentence_dgraph(CSentence & cs, DisambGraph & dgraph,
+  bool disamb_csentence_dgraph(CSentence & cs, DisambGraph & dgraph,
 							   const vector<float> & ranks) {
+
+	if (!cs.has_tgtwords()) return false; // no target words
 
 	vector<CWord>::iterator cw_it = cs.begin();
 	vector<CWord>::iterator cw_end = cs.end();
@@ -501,6 +499,7 @@ namespace ukb {
 	  if(!cw_it->is_tgtword()) continue;
 	  disamb_cword_dgraph(cw_it, dgraph, ranks);
 	}
+	return true;
   }
 
   void disamb_cword_dgraph(CSentence::iterator it, DisambGraph & dgraph,
@@ -874,7 +873,7 @@ namespace ukb {
   public:
 	myE_writer(const DisambG & g_) : g(g_) {};
 	void operator()(std::ostream& out, const Dis_edge_t & e) const {
-	  out << " [weigth=\"" << get(edge_weight, g, e) << "\"]";
+	  out << " [weight=\"" << get(edge_weight, g, e) << "\"]";
 	}
 	const DisambG & g;
   };
@@ -915,6 +914,6 @@ namespace ukb {
 						  //boost::default_writer(),
 						  //make_my_writer(get(vertex_name, g), "label"),
 						  make_my_writer(get(vertex_name, g), "label"),
-						  make_my_writer(get(edge_weight, g), "weigth"));
+						  make_my_writer(get(edge_weight, g), "weight"));
   }
 }

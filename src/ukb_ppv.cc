@@ -389,7 +389,7 @@ int main(int argc, char *argv[]) {
 
   options_description po_desc_prank("pageRank general options");
   po_desc_prank.add_options()
-    ("prank_weight,w", "Use weigths in pageRank calculation. Serialized graph edges must have some weight.")
+    ("prank_weight,w", "Use weights in pageRank calculation. Serialized graph edges must have some weight.")
     ("prank_iter", value<size_t>(), "Number of iterations in pageRank. Default is 30.")
     ("prank_threshold", value<float>(), "Threshold for pageRank convergence. Default is 0.0001.")
     ("prank_damping", value<float>(), "Set damping factor in PageRank equation. Default is 0.85.")
@@ -502,7 +502,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (vm.count("dict_file")) {
-      glVars::dict_filename = vm["dict_file"].as<string>();
+      glVars::dict::text_fname = vm["dict_file"].as<string>();
     }
 
     if (vm.count("prank_weight")) {
