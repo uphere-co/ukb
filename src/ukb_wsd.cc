@@ -340,17 +340,20 @@ void load_kb_and_dict() {
 	cout << "Loading KB " + kb_binfile + "\n";
   }
   Kb::create_from_binfile(kb_binfile);
-  if (opt_daemon) {
-	string aux("Loading Dict ");
-	aux += glVars::dict::text_fname;
-	syslog(LOG_INFO | LOG_USER, aux.c_str());
-  } else if (glVars::verbose) {
-	cout << "Loading Dict " + glVars::dict::text_fname + "\n";
-  }
-  dict_size = WDict::instance().size();
+  // Explicitly load dictionary only if:
+  // - there is a dictionary name (textual or binary)
+  // - opt_daemon is set
+  if (!opt_daemon) return;
+  if (!(glVars::dict::text_fname.size() + glVars::dict::bin_fname.size())) return;
+  string aux("Loading Dict ");
+  aux += glVars::dict::text_fname.size() ? glVars::dict::text_fname : glVars::dict::bin_fname;
+  syslog(LOG_INFO | LOG_USER, aux.c_str());
+  // looking for "fake_entry" causes dictionary to be loaded in memory
+  WDict_entries fake_entry = WDict::instance().get_entries("kaka", "");
   if (alternative_dict_fname.size()) {
 	WDict::instance().read_alternate_file(alternative_dict_fname);
   }
+  if (!fake_entry.size()) return;
 }
 
 void test(istream & fh_in) {

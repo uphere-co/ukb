@@ -51,6 +51,7 @@ namespace ukb {
 
   std::string get_fname_absolute(const std::string & fname) {
 
+	if (!fname.size()) return string();
 	fs::path p(fname);
 
 	return fs::canonical(fs::absolute(fs::path(fname))).string();
