@@ -271,7 +271,9 @@ bool handle_server_read(sSession & session) {
 	  dispatch_run_cs(cs);
 	  ostringstream oss;
 	  cs.print_csent(oss);
-	  session.send(oss.str());
+	  string oss_str(oss.str());
+	  if (!oss_str.length()) oss_str = "#"; // special line if not output
+	  session.send(oss_str);
 	}
   } catch (std::exception& e)	{
 	// send error and close the session.
@@ -301,6 +303,7 @@ bool client(istream & is, ostream & os, unsigned int port) {
 	  client.send(id);
 	  client.send(ctx);
 	  client.receive(out);
+	  if (out == "#") continue; // empty output for that context
 	  os << out;
 	  os.flush();
 	}
