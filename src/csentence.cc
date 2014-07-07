@@ -159,8 +159,10 @@ namespace ukb {
 		it != end; ++it) {
 	  tie(u, P) = ukb::Kb::instance().get_vertex_by_name(it->first);
 	  if (!P) {
-		if (glVars::input::swallow) continue;
-		throw std::logic_error("reset_concepts: " + it->first + " not in KB");
+		if (glVars::debug::warning)
+		  // No synset for that word.
+		  cerr << "reset_concepts: " + it->first + " not in KB\n";
+		continue;
 	  }
 	  N++;
 	  syns.push_back(it->first);
@@ -408,7 +410,7 @@ namespace ukb {
 		if (cw_type == CWord::cw_error) {
 		  throw std::logic_error(*it + " fourth field is invalid.");
 		}
-		if ((cw_type == CWord::cw_ctxword || cw_type == CWord::cw_tgtword) && glVars::input::filter_pos) {
+		if (glVars::input::filter_pos & (cw_type == CWord::cw_ctxword || cw_type == CWord::cw_tgtword)) {
 		  if (!ctwp.pos.size()) throw std::logic_error(*it + " has no POS.");
 		  pos = ctwp.pos;
 		}
@@ -447,7 +449,7 @@ namespace ukb {
 		if (!new_cw.size()) {
 		  if (glVars::debug::warning)
 			// No synset for that word.
-			cerr << "W:" << *it << " can't be mapped to KB.";
+			cerr << "W:" << *it << " can't be mapped to KB.\n";
 		  continue;
 		}
 		cws.push_back(new_cw);
@@ -709,6 +711,18 @@ namespace ukb {
   };
 
 
+  // Special case: w2w and CSentence only has one target word
+  static void cs_w2w_disambiguate_single_tw(CSentence &cs) {
+	// find tgt word and disambiguate
+	vector<CWord>::iterator cw_it = cs.begin();
+	vector<CWord>::iterator cw_end = cs.end();
+	for(; cw_it != cw_end; ++cw_it) {
+	  if(!cw_it->is_tgtword()) continue;
+	  cw_it->rank_synsets_one_tw(glVars::csentence::mult_priors);
+	  cw_it->disamb_cword();
+	}
+  }
+
   // given a word (pointed by tgtw_it),
   // 1. put a ppv in the synsets of the rest of words.
   // 2. Pagerank
@@ -718,7 +732,6 @@ namespace ukb {
 								CSentence::const_iterator tgtw_it,
 								vector<float> & ranks) {
 
-	if (!cs.has_tgtwords()) return false; // no target words
 	Kb & kb = ukb::Kb::instance();
 	vector<float> pv;
 
@@ -738,13 +751,16 @@ namespace ukb {
 
   int calculate_kb_ppr_by_word_and_disamb(CSentence & cs) {
 
-	if (!cs.has_tgtwords()) return 0; // no target words
+	size_t tgtN = cs.has_tgtwords();
+	if (!tgtN) return 0; // no target words
+	if (tgtN == 1) { // only one tw.
+	  cs_w2w_disambiguate_single_tw(cs);
+	  return 1;
+	}
 
 	Kb & kb = ukb::Kb::instance();
 	vector<float> ranks;
 	int success_n = 0;
-
-	bool use_prior = glVars::dict::use_weight && glVars::csentence::mult_priors; // If --dict-weight and ppr_w2w, use priors when ranking synsets
 
 	vector<CWord>::iterator cw_it = cs.begin();
 	vector<CWord>::iterator cw_end = cs.end();
@@ -757,9 +773,9 @@ namespace ukb {
 		success_n++;
 		if (glVars::csentence::disamb_minus_static) {
 		  struct va2vb newrank(ranks, kb.static_prank());
-		  cw_it->rank_synsets(newrank, use_prior);
+		  cw_it->rank_synsets(newrank, glVars::csentence::mult_priors);
 		} else {
-		  cw_it->rank_synsets(ranks, use_prior);
+		  cw_it->rank_synsets(ranks, glVars::csentence::mult_priors);
 		}
 	  }
 	  cw_it->disamb_cword();

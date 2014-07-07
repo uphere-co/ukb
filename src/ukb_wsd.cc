@@ -173,38 +173,10 @@ void ppr_csent(CSentence & cs) {
   vector<float> ranks;
   bool ok = calculate_kb_ppr(cs,ranks);
   if (!ok) {
-	cerr << "Error when calculating ranks for sentence " << cs.id() << "\n";
-	cerr << "(No word links to KB ?)\n";
+	cerr << "Unknown error when calculating ranks for sentence " << cs.id() << "\n";
 	return;
   }
   disamb_csentence_kb(cs, ranks);
-}
-
-
-void dis_csent_ppr(CSentence & cs) {
-
-  // fall back to static if csentence has only one word
-  if (cs.size() == 1) {
-	// if (glVars::debug::warning)
-	//   cerr << "dis_csent: using static for context " << cs.id() << endl;
-	const vector<float> ranks = Kb::instance().static_prank();
-	disamb_csentence_kb(cs, ranks);
-  } else {
-	ppr_csent(cs);
-  }
-}
-
-void dis_csent_ppr_by_word(CSentence & cs) {
-
-  // fall back to static if csentence has only one word
-  if (cs.size() == 1) {
-	// if (glVars::debug::warning)
-	//   cerr << "dis_csent: using static for context " << cs.id() << endl;
-	const vector<float> ranks = Kb::instance().static_prank();
-	disamb_csentence_kb(cs, ranks);
-  } else {
-	calculate_kb_ppr_by_word_and_disamb(cs);
-  }
 }
 
 void dis_csent_classic_prank(CSentence &cs) {
@@ -229,10 +201,10 @@ void dispatch_run_cs(CSentence & cs) {
 	disamb_dgraph_from_corpus(cs);
 	break;
   case ppr:
-	dis_csent_ppr(cs);
+	ppr_csent(cs);
 	break;
   case ppr_w2w:
-	dis_csent_ppr_by_word(cs);
+	calculate_kb_ppr_by_word_and_disamb(cs);
 	break;
   case ppr_static:
 	dis_csent_classic_prank(cs);
@@ -359,7 +331,14 @@ void load_kb_and_dict() {
   if (!fake_entry.size()) return;
 }
 
-void test(istream & fh_in) {
+void test() {
+
+  size_t l_n = 0;
+
+  glVars::dict::use_shuffle = false;
+  CSentence cs;
+  cs.read_aw(cin, l_n);
+  cs.debug(cerr);
 }
 
 int main(int argc, char *argv[]) {
@@ -775,7 +754,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (opt_do_test) {
-    // test(std::cin, false);
+	test();
 	return 0;
   }
 
