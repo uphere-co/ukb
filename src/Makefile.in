@@ -50,6 +50,7 @@ $(EXEC): $(MEMBERS) $(SRCS) $(EXEC_SRC)
 
 install: $(EXEC) libukb.a
 	install -d -m 755 $(INSTALLDIR)
+	install -d -m 755 $(libdir)
 	@for exec in $(EXEC); do \
 	cp -f $$exec $(INSTALLDIR) > /dev/null 2>&1; \
     cp -f libukb.a $(libdir) > /dev/null 2>&1; \
