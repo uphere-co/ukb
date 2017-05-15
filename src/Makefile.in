@@ -2,6 +2,7 @@
 all::
 
 CCC = @CXX@
+AR = ar
 STATIC =
 #@ENABLE_STATIC@
 INCLUDES = -I @BOOST_INCLUDE_DIR@
@@ -28,7 +29,7 @@ MEMBERS=$(SOURCES:.cc=.o)
 
 .PHONY: all install clean
 
-all:: $(EXEC)
+all:: $(EXEC) libukb.a
 
 version.h: FORCE
 	@$(SHELL_PATH) ./UKB-VERSION-GEN @PACKAGE_VERSION@
@@ -40,13 +41,17 @@ FORCE:
 %.o : %.cc
 	$(CCC) -c $(CCFLAGS) -o $@ $(INCLUDES) $<
 
+libukb.a: $(MEMBERS)
+	$(AR) rcs libukb.a $(MEMBERS)
+
 $(EXEC): $(MEMBERS) $(SRCS) $(EXEC_SRC)
 	$(CCC) $(CCFLAGS) -o $@ $@.cc $(MEMBERS) $(INCLUDES) $(STATIC) $(LDFLAGS)
 
-install: $(EXEC)
+install: $(EXEC) libukb.a
 	install -d -m 755 $(INSTALLDIR)
 	@for exec in $(EXEC); do \
 	cp -f $$exec $(INSTALLDIR) > /dev/null 2>&1; \
+    cp -f libukb.a $(INSTALLDIR) > /dev/null 2>&1; \
 	done
 
 clean:
