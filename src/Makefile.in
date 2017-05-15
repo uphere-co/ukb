@@ -16,6 +16,7 @@ endif
 prefix = @prefix@
 exec_prefix = @exec_prefix@
 bindir = @bindir@
+libdir = @libdir@
 datarootdir = @datarootdir@
 
 INSTALLDIR = ${bindir}
@@ -51,7 +52,7 @@ install: $(EXEC) libukb.a
 	install -d -m 755 $(INSTALLDIR)
 	@for exec in $(EXEC); do \
 	cp -f $$exec $(INSTALLDIR) > /dev/null 2>&1; \
-    cp -f libukb.a $(INSTALLDIR) > /dev/null 2>&1; \
+    cp -f libukb.a $(libdir) > /dev/null 2>&1; \
 	done
 
 clean:
