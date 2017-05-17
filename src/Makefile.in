@@ -47,7 +47,7 @@ libukb.a: $(MEMBERS)
 	$(AR) rcs libukb.a $(MEMBERS)
 
 libukb.so.1: $(MEMBERS)
-	$(CCC) -shared -fPIC -Wl,-soname,libukb.so.1 -o libukb.so.1 $(MEMBERS)
+	$(CCC) -shared -fPIC -Wl,-soname,libukb.so.1 -o libukb.so.1 $(MEMBERS) $(LDFLAGS)
 
 $(EXEC): $(MEMBERS) $(SRCS) $(EXEC_SRC)
 	$(CCC) $(CCFLAGS) -o $@ $@.cc $(MEMBERS) $(INCLUDES) $(STATIC) $(LDFLAGS)
@@ -60,8 +60,8 @@ install: $(EXEC) libukb.so.1 libukb.a
 	cp -f $$exec $(INSTALLDIR) > /dev/null 2>&1; \
 	done; \
 	cp -f *.h $(includedir) > /dev/null 2>&1; \
-    cp -f libukb.* $(libdir) > /dev/null 2>&1;
-
+    cp -f libukb.so.1 $(libdir) > /dev/null 2>&1; \
+    cd $(libdir); ln -s libukb.so.1 libukb.so 
     #cp -f libukb.a $(libdir) > /dev/null 2>&1;
 
 
