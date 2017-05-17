@@ -31,7 +31,7 @@ MEMBERS=$(SOURCES:.cc=.o)
 
 .PHONY: all install clean
 
-all:: $(EXEC) libukb.so
+all:: $(EXEC) libukb.so.1 libukb.a
 
 version.h: FORCE
 	@$(SHELL_PATH) ./UKB-VERSION-GEN @PACKAGE_VERSION@
@@ -43,16 +43,16 @@ FORCE:
 %.o : %.cc
 	$(CCC) -c $(CCFLAGS) -o $@ $(INCLUDES) $<
 
-#libukb.a: $(MEMBERS)
-#	$(AR) rcs libukb.a $(MEMBERS)
+libukb.a: $(MEMBERS)
+	$(AR) rcs libukb.a $(MEMBERS)
 
-libukb.so: $(MEMBERS)
-	$(CCC) -shared -o libukb.so $(MEMBERS)
+libukb.so.1: $(MEMBERS)
+	$(CCC) -shared -fPIC -Wl,-soname,libukb.so.1 -o libukb.so.1 $(MEMBERS)
 
 $(EXEC): $(MEMBERS) $(SRCS) $(EXEC_SRC)
 	$(CCC) $(CCFLAGS) -o $@ $@.cc $(MEMBERS) $(INCLUDES) $(STATIC) $(LDFLAGS)
 
-install: $(EXEC) libukb.so
+install: $(EXEC) libukb.so.1 libukb.a
 	install -d -m 755 $(INSTALLDIR)
 	install -d -m 755 $(libdir)
 	install -d -m 755 $(includedir)
@@ -60,7 +60,7 @@ install: $(EXEC) libukb.so
 	cp -f $$exec $(INSTALLDIR) > /dev/null 2>&1; \
 	done; \
 	cp -f *.h $(includedir) > /dev/null 2>&1; \
-    cp -f libukb.so $(libdir) > /dev/null 2>&1;
+    cp -f libukb.* $(libdir) > /dev/null 2>&1;
 
     #cp -f libukb.a $(libdir) > /dev/null 2>&1;
 
