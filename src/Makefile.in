@@ -17,6 +17,7 @@ prefix = @prefix@
 exec_prefix = @exec_prefix@
 bindir = @bindir@
 libdir = @libdir@
+includedir = @includedir@
 datarootdir = @datarootdir@
 
 INSTALLDIR = ${bindir}
@@ -51,10 +52,12 @@ $(EXEC): $(MEMBERS) $(SRCS) $(EXEC_SRC)
 install: $(EXEC) libukb.a
 	install -d -m 755 $(INSTALLDIR)
 	install -d -m 755 $(libdir)
+	install -d -m 755 $(includedir)
 	@for exec in $(EXEC); do \
 	cp -f $$exec $(INSTALLDIR) > /dev/null 2>&1; \
-    cp -f libukb.a $(libdir) > /dev/null 2>&1; \
-	done
+	done; \
+	cp -f *.h $(includedir) > /dev/null 2>&1; \
+    cp -f libukb.a $(libdir) > /dev/null 2>&1; 
 
 clean:
 	find . -type f -name '*.o' | xargs rm -f

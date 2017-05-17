@@ -1,5 +1,5 @@
 { pkgs ? import <nixpkgs> {}
-, uphere-nix-overlay 
+, uphere-nix-overlay ? <uphere-nix-overlay>
 }:
 
 with pkgs;
