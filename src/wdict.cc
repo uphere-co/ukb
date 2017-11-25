@@ -104,7 +104,7 @@ namespace ukb {
 
 	struct concept_parse_t {
 		string str;
-		Kb_vertex_t u;
+		Kb::vertex_descriptor u;
 		string pos;
 		float w;
 
@@ -112,7 +112,7 @@ namespace ukb {
 	};
 
 	struct ccache_map_t {
-		set<Kb_vertex_t> S; // concepts already seen
+		set<Kb::vertex_descriptor> S; // concepts already seen
 		vector<concept_parse_t> V;
 	};
 
@@ -166,8 +166,7 @@ namespace ukb {
 							   vector<string> & fields) {
 
 		string line;
-		bool res = read_line_noblank(fh, line, line_number);
-		if (!res) return 0; // EOF
+		if (!read_line_noblank(fh, line, line_number)) return 0; // EOF
 		char_separator<char> sep(" \t");
 		tokenizer<char_separator<char> > tok(line, sep);
 		copy(tok.begin(), tok.end(), back_inserter(fields));
@@ -201,7 +200,7 @@ namespace ukb {
 				continue;
 			}
 			// See if concept was already there
-			set<Kb_vertex_t>::iterator cache_it;
+			set<Kb::vertex_descriptor>::iterator cache_it;
 			tie(cache_it, aux) = ccache.S.insert(cp.u);
 			if (aux) {
 				ccache.V.push_back(cp);
@@ -223,7 +222,7 @@ namespace ukb {
 			sort(V.begin(), V.end(), pos_order());
 		vector<wdict_item_t> items;
 		vector<wdict_range_t> pos_ranges;
-		set<Kb_vertex_t> U;
+		set<Kb::vertex_descriptor> U;
 		size_t idx = 0;
 		size_t left = 0;
 		string old_pos("");
@@ -391,8 +390,8 @@ namespace ukb {
 			C += it->first.capacity();
 			const wdict_rhs_t & rhs = it->second;
 			O_rhs += sizeof(rhs);
-			D += rhs.m_items.size() * sizeof(Kb_vertex_t);
-			C += rhs.m_items.capacity() * sizeof(Kb_vertex_t);
+			D += rhs.m_items.size() * sizeof(Kb::vertex_descriptor);
+			C += rhs.m_items.capacity() * sizeof(Kb::vertex_descriptor);
 			O_items += sizeof(rhs.m_items);
 			O_ranges += sizeof(rhs.m_pos_ranges);
 			for(const wdict_range_t * pit = rhs.m_pos_ranges.begin();
@@ -508,7 +507,7 @@ namespace ukb {
 	}
 
 
-	WInvdict_entries WDict::words(Kb_vertex_t u) const {
+	WInvdict_entries WDict::words(Kb::vertex_descriptor u) const {
 		static winvdict_rhs_t null_entry;
 		if (!m_wdict_inv.size()) create_inverse_dict();
 		winvdict_t::const_iterator it = m_wdict_inv.find(u);
@@ -518,7 +517,7 @@ namespace ukb {
 
 	WInvdict_entries WDict::words(const std::string & ustr) const {
 		static winvdict_rhs_t null_entry;
-		Kb_vertex_t u;
+		Kb::vertex_descriptor u;
 		bool aux;
 		tie(u, aux) = Kb::instance().get_vertex_by_name(ustr);
 		if (!aux) return WInvdict_entries(null_entry);
@@ -597,7 +596,7 @@ namespace ukb {
 		return m_rhs.m_items.begin() + m_right;
 	};
 
-	Kb_vertex_t WDict_entries::get_entry(size_t i) const {
+	Kb::vertex_descriptor WDict_entries::get_entry(size_t i) const {
 		return m_rhs.m_items[i + m_left].m_syn;
 	}
 
@@ -788,8 +787,8 @@ namespace ukb {
 	// P[concept] = freq  ==> how many times 'concept' has been used in the dictionary
 	// N => total number of concept counts
 
-	float concept_priors(boost::unordered_map<Kb_vertex_t, float> & P) {
-		boost::unordered_map<Kb_vertex_t, float>().swap(P);
+	float concept_priors(boost::unordered_map<Kb::vertex_descriptor, float> & P) {
+		boost::unordered_map<Kb::vertex_descriptor, float>().swap(P);
 		WDictHeadwords dicthws(WDict::instance());
 		float N = 0.0f;
 		for(size_t i = 0; i < dicthws.size(); ++i) {
